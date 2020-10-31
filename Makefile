@@ -1,4 +1,4 @@
-zugcc: zugcc.zig
+zugcc: zugcc.zig tokenize.zig
 	zig build-exe zugcc.zig
 
 test: zugcc
