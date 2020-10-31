@@ -4,19 +4,11 @@ const print = stdout.print;
 const t = @import("tokenize.zig");
 const tokenize = t.tokenize;
 const TokenKind = t.TokenKind;
+const err = @import("error.zig");
+const error_at = err.error_at;
 
-fn equal(a: [:0]const u8, b: [:0]const u8) bool {
-    if (a.len != b.len) {
-        return false;
-    }
-    var i: usize = 0;
-    while (i < a.len) {
-        if (a[i] != b[i]) {
-            return false;
-        }
-        i += 1;
-    }
-    return true;
+fn streq(a: [:0]const u8, b: [:0]const u8) bool {
+    return std.mem.eql(u8, a, b);
 }
 
 pub fn main() !void {
@@ -46,14 +38,20 @@ pub fn main() !void {
             TokenKind.Punct => {
                 ti += 1;
                 const num = tokens[ti];
-                if (equal(token.val, "+")) {
+                if (streq(token.val, "+")) {
+                    if (num.kind != TokenKind.Num) {
+                        error_at(arg, num.loc, "数値ではありません");
+                    }
                     try print("  add ${}, %rax\n", .{num.val});
                     ti += 1;
-                } else if (equal(token.val, "-")) {
+                } else if (streq(token.val, "-")) {
+                    if (num.kind != TokenKind.Num) {
+                        error_at(arg, num.loc, "数値ではありません");
+                    }
                     try print("  sub ${}, %rax\n", .{num.val});
                     ti += 1;
                 } else {
-                    @panic("不正なトークンです");
+                    error_at(arg, token.loc, "不正なトークンです");
                 }
             },
         }
