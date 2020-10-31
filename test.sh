@@ -2,8 +2,8 @@
 assert() {
   expected="$1"
   input="$2"
-
-  ./zugcc "$input" > tmp.s || exit
+  zig build
+  ./zig-cache/bin/zugcc "$input" > tmp.s || exit
   gcc -static -o tmp tmp.s
   ./tmp
   actual="$?"

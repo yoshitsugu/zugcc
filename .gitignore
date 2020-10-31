@@ -3,5 +3,5 @@
 **/*.o
 **/*.s
 **/a.out
-/zugcc
+/zig-cache
 /tmp
