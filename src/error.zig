@@ -2,8 +2,14 @@ const std = @import("std");
 const stderr = std.io.getStdErr().outStream();
 const printErr = stderr.print;
 
-pub fn error_at(str: [*:0]const u8, index: usize, errorMessage: [*:0]const u8) noreturn {
-    _ = printErr("=== COMPILE ERROR ===\n{}\n", .{str}) catch {};
+var target_string: *const [*:0]u8 = undefined;
+
+pub fn setTargetString(strPtr: *const [*:0]u8) void {
+    target_string = strPtr;
+}
+
+pub fn errorAt(index: usize, errorMessage: [*:0]const u8) noreturn {
+    _ = printErr("=== COMPILE ERROR ===\n{}\n", .{target_string.*}) catch {};
     var i: usize = 0;
     while (i < index) {
         _ = printErr(" ", .{}) catch {};

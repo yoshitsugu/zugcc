@@ -1,15 +1,15 @@
 const std = @import("std");
-const List = std.ArrayList;
+const ArrayList = std.ArrayList;
 const allocPrint0 = std.fmt.allocPrint0;
-const Allocator = std.mem.Allocator;
 const err = @import("error.zig");
-const error_at = err.error_at;
+const errorAt = err.errorAt;
+const globals = @import("globals.zig");
 
-const KEYWORDS = "+-";
+const KEYWORDS = "+-*/";
 
 pub const TokenKind = enum {
-    Punct, // 区切り記号
-    Num, // 数値
+    TkPunct, // 区切り記号
+    TkNum, // 数値
 };
 
 pub const Token = struct {
@@ -18,42 +18,42 @@ pub const Token = struct {
     loc: usize, // 元の文字列上の場所
 };
 
-pub fn newToken(allocator: *Allocator, kind: TokenKind, val: []const u8, loc: usize) !Token {
-    return Token{ .kind = kind, .val = try allocPrint0(allocator, "{}", .{val}), .loc = loc };
+pub fn newToken(kind: TokenKind, val: []const u8, loc: usize) !Token {
+    return Token{ .kind = kind, .val = try allocPrint0(globals.allocator, "{}", .{val}), .loc = loc };
 }
 
-pub fn tokenize(allocator: *Allocator, str: [*:0]const u8) !List(Token) {
-    var tokens = List(Token).init(allocator);
+pub fn tokenize(str: [*:0]const u8) !ArrayList(Token) {
+    var tokens = ArrayList(Token).init(globals.allocator);
     var i: usize = 0;
     while (str[i] != 0) {
         const c = str[i];
-        if (is_space(c)) {
+        if (isSpace(c)) {
             i += 1;
-        } else if (is_number(c)) {
+        } else if (isNumber(c)) {
             const h = i;
-            i = expect_number(str, i);
-            const num = try newToken(allocator, .Num, str[h..i], i);
+            i = expectNumber(str, i);
+            const num = try newToken(.TkNum, str[h..i], i);
             try tokens.append(num);
-        } else if (is_keyword(c)) {
-            const punct = try newToken(allocator, .Punct, str[i .. i + 1], i);
+        } else if (isKeyword(c)) {
+            const punct = try newToken(.TkPunct, str[i .. i + 1], i);
             try tokens.append(punct);
             i += 1;
         } else {
-            error_at(str, i, "トークナイズできませんでした");
+            errorAt(i, "トークナイズできませんでした");
         }
     }
     return tokens;
 }
 
-fn is_number(c: u8) bool {
+fn isNumber(c: u8) bool {
     return '0' <= c and c <= '9';
 }
 
-fn is_space(c: u8) bool {
+fn isSpace(c: u8) bool {
     return c == ' ';
 }
 
-fn is_keyword(c: u8) bool {
+fn isKeyword(c: u8) bool {
     for (KEYWORDS) |k| {
         if (c == k) {
             return true;
@@ -62,17 +62,17 @@ fn is_keyword(c: u8) bool {
     return false;
 }
 
-fn expect_number(ptr: [*:0]const u8, index: usize) usize {
-    if (is_number(ptr[index])) {
-        return consume_number(ptr, index);
+fn expectNumber(ptr: [*:0]const u8, index: usize) usize {
+    if (isNumber(ptr[index])) {
+        return consumeNumber(ptr, index);
     } else {
-        error_at(ptr, index, "数値ではありません");
+        errorAt(index, "数値ではありません");
     }
 }
 
-fn consume_number(ptr: [*:0]const u8, index: usize) usize {
+fn consumeNumber(ptr: [*:0]const u8, index: usize) usize {
     var end = index;
-    while (is_number(ptr[end])) {
+    while (isNumber(ptr[end])) {
         end += 1;
     }
     return end;

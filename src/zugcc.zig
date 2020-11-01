@@ -6,56 +6,32 @@ const tokenize = t.tokenize;
 const TokenKind = t.TokenKind;
 const err = @import("error.zig");
 const error_at = err.error_at;
-
-fn streq(a: [:0]const u8, b: [:0]const u8) bool {
-    return std.mem.eql(u8, a, b);
-}
+const setTargetString = err.setTargetString;
+const parse = @import("parse.zig");
+const expr = parse.expr;
+const codegen = @import("codegen.zig");
+const genExpr = codegen.genExpr;
+const globals = @import("globals.zig");
 
 pub fn main() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    const allocator = &arena.allocator;
+    globals.setAllocator(&arena.allocator);
 
     if (std.os.argv.len != 2) {
         @panic("コンパイルしたい文字列を引数として渡してください");
     }
 
+    const arg = std.os.argv[1];
+    setTargetString(&arg);
+    const tokenized = try tokenize(arg);
+    var ti: usize = 0;
+    const node = expr(tokenized.items, &ti);
+
     try print("  .globl main\n", .{});
     try print("main:\n", .{});
 
-    const arg = std.os.argv[1];
-    const tokenized = try tokenize(allocator, arg);
-
-    var ti: usize = 0;
-    const tokens = tokenized.items;
-    while (ti < tokens.len) {
-        const token = tokens[ti];
-        switch (token.kind) {
-            TokenKind.Num => {
-                try print("  mov ${}, %rax\n", .{token.val});
-                ti += 1;
-            },
-            TokenKind.Punct => {
-                ti += 1;
-                const num = tokens[ti];
-                if (streq(token.val, "+")) {
-                    if (num.kind != TokenKind.Num) {
-                        error_at(arg, num.loc, "数値ではありません");
-                    }
-                    try print("  add ${}, %rax\n", .{num.val});
-                    ti += 1;
-                } else if (streq(token.val, "-")) {
-                    if (num.kind != TokenKind.Num) {
-                        error_at(arg, num.loc, "数値ではありません");
-                    }
-                    try print("  sub ${}, %rax\n", .{num.val});
-                    ti += 1;
-                } else {
-                    error_at(arg, token.loc, "不正なトークンです");
-                }
-            },
-        }
-    }
+    try genExpr(node);
 
     try print("  ret\n", .{});
 }
