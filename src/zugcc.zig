@@ -7,10 +7,9 @@ const TokenKind = t.TokenKind;
 const err = @import("error.zig");
 const error_at = err.error_at;
 const setTargetString = err.setTargetString;
-const parse = @import("parse.zig");
-const expr = parse.expr;
-const codegen = @import("codegen.zig");
-const genExpr = codegen.genExpr;
+const pr = @import("parse.zig");
+const parse = pr.parse;
+const codegen = @import("codegen.zig").codegen;
 const globals = @import("globals.zig");
 
 pub fn main() !void {
@@ -26,12 +25,7 @@ pub fn main() !void {
     setTargetString(&arg);
     const tokenized = try tokenize(arg);
     var ti: usize = 0;
-    const node = expr(tokenized.items, &ti);
+    const nodes = try parse(tokenized.items, &ti);
 
-    try print("  .globl main\n", .{});
-    try print("main:\n", .{});
-
-    try genExpr(node);
-
-    try print("  ret\n", .{});
+    try codegen(nodes);
 }

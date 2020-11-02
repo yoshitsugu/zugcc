@@ -5,7 +5,7 @@ const err = @import("error.zig");
 const errorAt = err.errorAt;
 const globals = @import("globals.zig");
 
-const PUNCT_CHARS = "+-*/()<>";
+const PUNCT_CHARS = "+-*/()<>;";
 const PUNCT_STRS = [_][:0]const u8{ "==", "!=", "<=", ">=" };
 
 pub const TokenKind = enum {

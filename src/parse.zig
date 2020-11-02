@@ -63,6 +63,22 @@ pub fn newNum(val: [:0]u8) *Node {
     return node;
 }
 
+// program = stmt*
+pub fn parse(tokens: []Token, ti: *usize) !ArrayList(*Node) {
+    var nodes = ArrayList(*Node).init(globals.allocator);
+    while (ti.* < tokens.len) {
+        try nodes.append(stmt(tokens, ti));
+    }
+    return nodes;
+}
+
+// stmt = expr ";"
+pub fn stmt(tokens: []Token, ti: *usize) *Node {
+    const node = expr(tokens, ti);
+    skip(tokens, ti, ";");
+    return node;
+}
+
 // expr = equality
 pub fn expr(tokens: []Token, ti: *usize) *Node {
     return equality(tokens, ti);
@@ -184,6 +200,9 @@ pub fn primary(tokens: []Token, ti: *usize) *Node {
 }
 
 fn skip(tokens: []Token, ti: *usize, s: [:0]const u8) void {
+    if (tokens.len <= ti.*) {
+        errorAt(tokens.len, "予期せず入力が終了しました。最後に ; を入力してください。");
+    }
     const token = tokens[ti.*];
     if (streq(token.val, s)) {
         ti.* += 1;

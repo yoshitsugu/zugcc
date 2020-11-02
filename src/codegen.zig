@@ -1,9 +1,25 @@
 const std = @import("std");
+const ArrayList = std.ArrayList;
 const stdout = std.io.getStdOut().outStream();
 const print = stdout.print;
 const parse = @import("parse.zig");
 const NodeKind = parse.NodeKind;
 const Node = parse.Node;
+const assert = @import("std").debug.assert;
+
+var depth: usize = 0;
+
+pub fn codegen(nodes: ArrayList(*Node)) !void {
+    try print("  .globl main\n", .{});
+    try print("main:\n", .{});
+
+    for (nodes.items) |node| {
+        try genExpr(node);
+        assert(depth == 0);
+    }
+
+    try print("  ret\n", .{});
+}
 
 pub fn genExpr(nodeWithNull: ?*Node) anyerror!void {
     if (nodeWithNull == null) {
@@ -56,8 +72,10 @@ pub fn genExpr(nodeWithNull: ?*Node) anyerror!void {
 
 fn push() !void {
     try print("  push %rax\n", .{});
+    depth += 1;
 }
 
 fn pop(arg: [:0]const u8) !void {
     try print("  pop {}\n", .{arg});
+    depth -= 1;
 }
