@@ -10,9 +10,17 @@ pub fn genExpr(nodeWithNull: ?*Node) anyerror!void {
         return;
     }
     const node: *Node = nodeWithNull.?;
-    if (node.*.kind == NodeKind.NdNum) {
-        try print("  mov ${}, %rax \n", .{node.*.val});
-        return;
+    switch (node.*.kind) {
+        NodeKind.NdNum => {
+            try print("  mov ${}, %rax\n", .{node.*.val});
+            return;
+        },
+        NodeKind.NdNeg => {
+            try genExpr(node.*.lhs);
+            try print("  neg %rax\n", .{});
+            return;
+        },
+        else => {},
     }
 
     try genExpr(node.*.rhs);

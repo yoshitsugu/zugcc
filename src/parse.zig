@@ -16,6 +16,7 @@ pub const NodeKind = enum {
     NdSub, // -
     NdMul, // *
     NdDiv, // /
+    NdNeg, // unary -
     NdNum, // 数値
 };
 
@@ -47,6 +48,13 @@ pub fn newBinary(kind: NodeKind, lhs: *Node, rhs: *Node) *Node {
     return node;
 }
 
+pub fn newUnary(kind: NodeKind, lhs: *Node) *Node {
+    var node = globals.allocator.create(Node) catch @panic("cannot allocate Node");
+    node.* = Node.init(kind);
+    node.*.lhs = lhs;
+    return node;
+}
+
 pub fn newNum(val: [:0]u8) *Node {
     var node = globals.allocator.create(Node) catch @panic("cannot allocate Node");
     node.* = Node.init(.NdNum);
@@ -73,23 +81,38 @@ pub fn expr(tokens: []Token, ti: *usize) *Node {
     return node;
 }
 
-// mul = primary ("*" primary | "/" primary)*
+// mul = unary ("*" unary | "/" unary)*
 pub fn mul(tokens: []Token, ti: *usize) *Node {
-    var node = primary(tokens, ti);
+    var node = unary(tokens, ti);
 
     while (ti.* < tokens.len) {
         const token = tokens[ti.*];
         if (streq(token.val, "*")) {
             ti.* += 1;
-            node = newBinary(.NdMul, node, primary(tokens, ti));
+            node = newBinary(.NdMul, node, unary(tokens, ti));
         } else if (streq(token.val, "/")) {
             ti.* += 1;
-            node = newBinary(.NdDiv, node, primary(tokens, ti));
+            node = newBinary(.NdDiv, node, unary(tokens, ti));
         } else {
             break;
         }
     }
     return node;
+}
+
+// unary = ("+" | "-") unary
+//       | primary
+pub fn unary(tokens: []Token, ti: *usize) *Node {
+    const token = tokens[ti.*];
+    if (streq(token.val, "+")) {
+        ti.* += 1;
+        return unary(tokens, ti);
+    }
+    if (streq(token.val, "-")) {
+        ti.* += 1;
+        return newUnary(.NdNeg, unary(tokens, ti));
+    }
+    return primary(tokens, ti);
 }
 
 // primary = "(" expr ")" | num

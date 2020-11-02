@@ -5,7 +5,7 @@ const err = @import("error.zig");
 const errorAt = err.errorAt;
 const globals = @import("globals.zig");
 
-const KEYWORDS = "+-*/";
+const KEYWORDS = "+-*/()";
 
 pub const TokenKind = enum {
     TkPunct, // 区切り記号
