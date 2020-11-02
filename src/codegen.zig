@@ -13,11 +13,18 @@ pub fn codegen(nodes: ArrayList(*Node)) !void {
     try print("  .globl main\n", .{});
     try print("main:\n", .{});
 
+    // Prologue
+    try print("  push %rbp\n", .{});
+    try print("  mov %rsp, %rbp\n", .{});
+    try print("  sub $208, %rsp\n", .{});
+
     for (nodes.items) |node| {
         try genExpr(node);
         assert(depth == 0);
     }
 
+    try print("  mov %rbp, %rsp\n", .{});
+    try print("  pop %rbp\n", .{});
     try print("  ret\n", .{});
 }
 
@@ -34,6 +41,19 @@ pub fn genExpr(nodeWithNull: ?*Node) anyerror!void {
         NodeKind.NdNeg => {
             try genExpr(node.*.lhs);
             try print("  neg %rax\n", .{});
+            return;
+        },
+        NodeKind.NdVar => {
+            try genAddr(node);
+            try print("  mov (%rax), %rax\n", .{});
+            return;
+        },
+        NodeKind.NdAssign => {
+            try genAddr(node.*.lhs.?);
+            try push();
+            try genExpr(node.*.rhs.?);
+            try pop("%rdi");
+            try print("  mov %rax, (%rdi)\n", .{});
             return;
         },
         else => {},
@@ -78,4 +98,14 @@ fn push() !void {
 fn pop(arg: [:0]const u8) !void {
     try print("  pop {}\n", .{arg});
     depth -= 1;
+}
+
+fn genAddr(node: *Node) !void {
+    if (node.*.kind == NodeKind.NdVar) {
+        const offset: isize = (node.*.val.?[0] - 'a' + 1) * 8;
+        try print("  lea {}(%rbp), %rax\n", .{-offset});
+        return;
+    }
+
+    @panic("ローカル変数ではありません");
 }

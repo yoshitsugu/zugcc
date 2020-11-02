@@ -22,6 +22,8 @@ pub const NodeKind = enum {
     NdNe, // !=
     NdLt, // <
     NdLe, // <=
+    NdAssign, // =
+    NdVar, // 変数
     NdNum, // 数値
 };
 
@@ -63,6 +65,13 @@ pub fn newNum(val: [:0]u8) *Node {
     return node;
 }
 
+pub fn newVar(name: [:0]u8) *Node {
+    var node = globals.allocator.create(Node) catch @panic("cannot allocate Node");
+    node.* = Node.init(.NdVar);
+    node.*.val = name;
+    return node;
+}
+
 // program = stmt*
 pub fn parse(tokens: []Token, ti: *usize) !ArrayList(*Node) {
     var nodes = ArrayList(*Node).init(globals.allocator);
@@ -79,9 +88,19 @@ pub fn stmt(tokens: []Token, ti: *usize) *Node {
     return node;
 }
 
-// expr = equality
+// expr = assign
 pub fn expr(tokens: []Token, ti: *usize) *Node {
-    return equality(tokens, ti);
+    return assign(tokens, ti);
+}
+
+// assign = equality ("=" assign)?
+pub fn assign(tokens: []Token, ti: *usize) *Node {
+    var node = equality(tokens, ti);
+
+    if (consumeTokVal(tokens, ti, "=")) {
+        node = newBinary(.NdAssign, node, assign(tokens, ti));
+    }
+    return node;
 }
 
 // equality = relational ("==" relational | "!=" relational)*
@@ -90,11 +109,9 @@ pub fn equality(tokens: []Token, ti: *usize) *Node {
 
     while (ti.* < tokens.len) {
         const token = tokens[ti.*];
-        if (streq(token.val, "==")) {
-            ti.* += 1;
+        if (consumeTokVal(tokens, ti, "==")) {
             node = newBinary(.NdEq, node, relational(tokens, ti));
-        } else if (streq(token.val, "!=")) {
-            ti.* += 1;
+        } else if (consumeTokVal(tokens, ti, "!=")) {
             node = newBinary(.NdNe, node, relational(tokens, ti));
         } else {
             break;
@@ -109,17 +126,13 @@ pub fn relational(tokens: []Token, ti: *usize) *Node {
 
     while (ti.* < tokens.len) {
         const token = tokens[ti.*];
-        if (streq(token.val, "<")) {
-            ti.* += 1;
+        if (consumeTokVal(tokens, ti, "<")) {
             node = newBinary(.NdLt, node, add(tokens, ti));
-        } else if (streq(token.val, "<=")) {
-            ti.* += 1;
+        } else if (consumeTokVal(tokens, ti, "<=")) {
             node = newBinary(.NdLe, node, add(tokens, ti));
-        } else if (streq(token.val, ">")) {
-            ti.* += 1;
+        } else if (consumeTokVal(tokens, ti, ">")) {
             node = newBinary(.NdLt, add(tokens, ti), node);
-        } else if (streq(token.val, ">=")) {
-            ti.* += 1;
+        } else if (consumeTokVal(tokens, ti, ">=")) {
             node = newBinary(.NdLe, add(tokens, ti), node);
         } else {
             break;
@@ -134,11 +147,9 @@ pub fn add(tokens: []Token, ti: *usize) *Node {
 
     while (ti.* < tokens.len) {
         const token = tokens[ti.*];
-        if (streq(token.val, "+")) {
-            ti.* += 1;
+        if (consumeTokVal(tokens, ti, "+")) {
             node = newBinary(.NdAdd, node, mul(tokens, ti));
-        } else if (streq(token.val, "-")) {
-            ti.* += 1;
+        } else if (consumeTokVal(tokens, ti, "-")) {
             node = newBinary(.NdSub, node, mul(tokens, ti));
         } else {
             break;
@@ -181,7 +192,7 @@ pub fn unary(tokens: []Token, ti: *usize) *Node {
     return primary(tokens, ti);
 }
 
-// primary = "(" expr ")" | num
+// primary = "(" expr ")" | ident | num
 pub fn primary(tokens: []Token, ti: *usize) *Node {
     const token = tokens[ti.*];
     if (streq(token.val, "(")) {
@@ -189,6 +200,11 @@ pub fn primary(tokens: []Token, ti: *usize) *Node {
         const node = expr(tokens, ti);
         skip(tokens, ti, ")");
         return node;
+    }
+
+    if (token.kind == TokenKind.TkIdent) {
+        ti.* += 1;
+        return newVar(token.val);
     }
 
     if (token.kind == TokenKind.TkNum) {
@@ -210,4 +226,16 @@ fn skip(tokens: []Token, ti: *usize, s: [:0]const u8) void {
         const string = allocPrint0(globals.allocator, "期待した文字列がありません: {}", .{s}) catch "期待した文字列がありません";
         errorAt(token.loc, string);
     }
+}
+
+fn consumeTokVal(tokens: []Token, ti: *usize, s: [:0]const u8) bool {
+    if (tokens.len <= ti.*) {
+        return false;
+    }
+    const token = tokens[ti.*];
+    if (streq(token.val, s)) {
+        ti.* += 1;
+        return true;
+    }
+    return false;
 }

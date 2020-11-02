@@ -5,10 +5,11 @@ const err = @import("error.zig");
 const errorAt = err.errorAt;
 const globals = @import("globals.zig");
 
-const PUNCT_CHARS = "+-*/()<>;";
+const PUNCT_CHARS = "+-*/()<>;=";
 const PUNCT_STRS = [_][:0]const u8{ "==", "!=", "<=", ">=" };
 
 pub const TokenKind = enum {
+    TkIdent, // 識別子
     TkPunct, // 区切り記号
     TkNum, // 数値
 };
@@ -37,6 +38,12 @@ pub fn tokenize(str: [*:0]const u8) !ArrayList(Token) {
             i = expectNumber(str, i);
             const num = try newToken(.TkNum, str[h..i], i);
             try tokens.append(num);
+            continue;
+        }
+        if (isIdent(c)) {
+            const ident = try newToken(.TkIdent, str[i .. i + 1], i);
+            try tokens.append(ident);
+            i += 1;
             continue;
         }
         const puncts_end = readPuncts(str, i);
@@ -72,6 +79,10 @@ fn isPunct(c: u8) bool {
         }
     }
     return false;
+}
+
+fn isIdent(c: u8) bool {
+    return 'a' <= c and c <= 'z';
 }
 
 fn readPuncts(str: [*:0]const u8, i: usize) usize {
