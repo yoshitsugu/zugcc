@@ -5,7 +5,8 @@ const err = @import("error.zig");
 const errorAt = err.errorAt;
 const globals = @import("globals.zig");
 
-const KEYWORDS = "+-*/()";
+const PUNCT_CHARS = "+-*/()<>";
+const PUNCT_STRS = [_][:0]const u8{ "==", "!=", "<=", ">=" };
 
 pub const TokenKind = enum {
     TkPunct, // 区切り記号
@@ -29,18 +30,29 @@ pub fn tokenize(str: [*:0]const u8) !ArrayList(Token) {
         const c = str[i];
         if (isSpace(c)) {
             i += 1;
-        } else if (isNumber(c)) {
+            continue;
+        }
+        if (isNumber(c)) {
             const h = i;
             i = expectNumber(str, i);
             const num = try newToken(.TkNum, str[h..i], i);
             try tokens.append(num);
-        } else if (isKeyword(c)) {
+            continue;
+        }
+        const puncts_end = readPuncts(str, i);
+        if (puncts_end > i) {
+            const punct = try newToken(.TkPunct, str[i..puncts_end], i);
+            try tokens.append(punct);
+            i = puncts_end;
+            continue;
+        }
+        if (isPunct(c)) {
             const punct = try newToken(.TkPunct, str[i .. i + 1], i);
             try tokens.append(punct);
             i += 1;
-        } else {
-            errorAt(i, "トークナイズできませんでした");
+            continue;
         }
+        errorAt(i, "トークナイズできませんでした");
     }
     return tokens;
 }
@@ -53,13 +65,23 @@ fn isSpace(c: u8) bool {
     return c == ' ';
 }
 
-fn isKeyword(c: u8) bool {
-    for (KEYWORDS) |k| {
+fn isPunct(c: u8) bool {
+    for (PUNCT_CHARS) |k| {
         if (c == k) {
             return true;
         }
     }
     return false;
+}
+
+fn readPuncts(str: [*:0]const u8, i: usize) usize {
+    for (PUNCT_STRS) |pstr| {
+        const cut_str = allocPrint0(globals.allocator, "{}", .{str[i .. i + pstr.len]}) catch "";
+        if (streq(cut_str, pstr)) {
+            return i + pstr.len;
+        }
+    }
+    return i;
 }
 
 fn expectNumber(ptr: [*:0]const u8, index: usize) usize {
@@ -76,4 +98,8 @@ fn consumeNumber(ptr: [*:0]const u8, index: usize) usize {
         end += 1;
     }
     return end;
+}
+
+pub fn streq(a: [:0]const u8, b: [:0]const u8) bool {
+    return std.mem.eql(u8, a, b);
 }

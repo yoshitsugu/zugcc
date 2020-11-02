@@ -36,6 +36,20 @@ pub fn genExpr(nodeWithNull: ?*Node) anyerror!void {
             try print("  cqo\n", .{});
             try print("  idiv %rdi\n", .{});
         },
+        NodeKind.NdEq, NodeKind.NdNe, NodeKind.NdLt, NodeKind.NdLe => {
+            try print("  cmp %rdi, %rax\n", .{});
+
+            if (node.*.kind == NodeKind.NdEq) {
+                try print("  sete %al\n", .{});
+            } else if (node.*.kind == NodeKind.NdNe) {
+                try print("  setne %al\n", .{});
+            } else if (node.*.kind == NodeKind.NdLt) {
+                try print("  setl %al\n", .{});
+            } else if (node.*.kind == NodeKind.NdLe) {
+                try print("  setle %al\n", .{});
+            }
+            try print("  movzb %al, %rax\n", .{});
+        },
         else => @panic("code generationに失敗しました"),
     }
 }
