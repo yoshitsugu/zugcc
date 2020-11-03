@@ -22,16 +22,26 @@ pub fn codegen(func: *Func) !void {
     try print("  sub ${}, %rsp\n", .{func.*.stack_size});
 
     for (func.*.nodes.items) |node| {
-        try genExpr(node);
+        try genStmt(node);
         assert(depth == 0);
     }
 
+    try print(".L.return:\n", .{});
     try print("  mov %rbp, %rsp\n", .{});
     try print("  pop %rbp\n", .{});
     try print("  ret\n", .{});
 }
 
-pub fn genExpr(nodeWithNull: ?*Node) anyerror!void {
+fn genStmt(node: *Node) !void {
+    if (node.kind == NodeKind.NdReturn) {
+        try genExpr(node.*.lhs);
+        try print("  jmp .L.return\n", .{});
+        return;
+    }
+    try genExpr(node);
+}
+
+fn genExpr(nodeWithNull: ?*Node) anyerror!void {
     if (nodeWithNull == null) {
         return;
     }

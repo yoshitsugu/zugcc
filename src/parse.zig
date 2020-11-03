@@ -23,6 +23,7 @@ pub const NodeKind = enum {
     NdLt, // <
     NdLe, // <=
     NdAssign, // =
+    NdReturn, // return
     NdVar, // 変数
     NdNum, // 数値
 };
@@ -126,8 +127,13 @@ pub fn parse(tokens: []Token, ti: *usize) !*Func {
     return func;
 }
 
-// stmt = expr ";"
+// stmt = "return"? expr ";"
 pub fn stmt(tokens: []Token, ti: *usize) *Node {
+    if (consumeTokVal(tokens, ti, "return")) {
+        const node = newUnary(.NdReturn, expr(tokens, ti));
+        skip(tokens, ti, ";");
+        return node;
+    }
     const node = expr(tokens, ti);
     skip(tokens, ti, ";");
     return node;

@@ -7,10 +7,12 @@ const globals = @import("globals.zig");
 
 const PUNCT_CHARS = "+-*/()<>;=";
 const PUNCT_STRS = [_][:0]const u8{ "==", "!=", "<=", ">=" };
+const KEYWORDS = [_][:0]const u8{"return"};
 
 pub const TokenKind = enum {
     TkIdent, // 識別子
     TkPunct, // 区切り記号
+    TkKeyword, // キーワード
     TkNum, // 数値
 };
 
@@ -43,8 +45,11 @@ pub fn tokenize(str: [*:0]const u8) !ArrayList(Token) {
         if (isIdentHead(c)) {
             const h = i;
             i = readIdent(str, i);
-            const ident = try newToken(.TkIdent, str[h..i], i);
-            try tokens.append(ident);
+            var tk = try newToken(.TkIdent, str[h..i], i);
+            if (isKeyword(str, h, i)) {
+                tk = try newToken(.TkKeyword, str[h..i], i);
+            }
+            try tokens.append(tk);
             continue;
         }
         const puncts_end = readPuncts(str, i);
@@ -99,6 +104,16 @@ fn readIdent(str: [*:0]const u8, i: usize) usize {
         h += 1;
     }
     return h;
+}
+
+fn isKeyword(str: [*:0]const u8, startIndex: usize, endIndex: usize) bool {
+    const pstr = allocPrint0(globals.allocator, "{}", .{str[startIndex..endIndex]}) catch "";
+    for (KEYWORDS) |kwd| {
+        if (streq(kwd, pstr)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 fn readPuncts(str: [*:0]const u8, i: usize) usize {
