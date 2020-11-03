@@ -5,20 +5,23 @@ const print = stdout.print;
 const parse = @import("parse.zig");
 const NodeKind = parse.NodeKind;
 const Node = parse.Node;
+const Func = parse.Func;
 const assert = @import("std").debug.assert;
 
 var depth: usize = 0;
 
-pub fn codegen(nodes: ArrayList(*Node)) !void {
+pub fn codegen(func: *Func) !void {
+    _ = assignLvarOffsets(func);
+
     try print("  .globl main\n", .{});
     try print("main:\n", .{});
 
     // Prologue
     try print("  push %rbp\n", .{});
     try print("  mov %rsp, %rbp\n", .{});
-    try print("  sub $208, %rsp\n", .{});
+    try print("  sub ${}, %rsp\n", .{func.*.stack_size});
 
-    for (nodes.items) |node| {
+    for (func.*.nodes.items) |node| {
         try genExpr(node);
         assert(depth == 0);
     }
@@ -102,10 +105,23 @@ fn pop(arg: [:0]const u8) !void {
 
 fn genAddr(node: *Node) !void {
     if (node.*.kind == NodeKind.NdVar) {
-        const offset: isize = (node.*.val.?[0] - 'a' + 1) * 8;
-        try print("  lea {}(%rbp), %rax\n", .{-offset});
+        try print("  lea {}(%rbp), %rax\n", .{node.*.variable.?.*.offset});
         return;
     }
 
     @panic("ローカル変数ではありません");
+}
+
+fn assignLvarOffsets(func: *Func) void {
+    var offset: i32 = 0;
+    for (func.*.locals.items) |lv| {
+        offset += 8;
+        lv.offset = -offset;
+    }
+    func.*.stack_size = alignTo(offset, 16);
+}
+
+// アライン処理。関数を呼び出す前にRBPを16アラインしないといけない。
+fn alignTo(n: i32, a: i32) i32 {
+    return @divFloor((n + a - 1), a) * a;
 }

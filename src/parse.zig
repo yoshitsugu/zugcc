@@ -31,6 +31,7 @@ pub const Node = struct {
     kind: NodeKind, // 種別
     lhs: ?*Node, // Left-hand side
     rhs: ?*Node, // Right-hand side
+    variable: ?*Obj, // 変数
     val: ?[:0]u8, // Numのときに使われる
 
     pub fn init(kind: NodeKind) Node {
@@ -38,9 +39,23 @@ pub const Node = struct {
             .kind = kind,
             .lhs = null,
             .rhs = null,
+            .variable = null,
             .val = null,
         };
     }
+};
+
+// ローカル変数
+pub const Obj = struct {
+    name: [:0]u8,
+    offset: i32, // RBPからのオフセット
+};
+
+// 関数
+pub const Func = struct {
+    nodes: ArrayList(*Node),
+    locals: ArrayList(*Obj),
+    stack_size: i32,
 };
 
 pub fn newBinary(kind: NodeKind, lhs: *Node, rhs: *Node) *Node {
@@ -58,27 +73,57 @@ pub fn newUnary(kind: NodeKind, lhs: *Node) *Node {
     return node;
 }
 
-pub fn newNum(val: [:0]u8) *Node {
+fn newNum(val: [:0]u8) *Node {
     var node = globals.allocator.create(Node) catch @panic("cannot allocate Node");
     node.* = Node.init(.NdNum);
     node.*.val = val;
     return node;
 }
 
-pub fn newVar(name: [:0]u8) *Node {
+fn newVarNode(v: *Obj) *Node {
     var node = globals.allocator.create(Node) catch @panic("cannot allocate Node");
     node.* = Node.init(.NdVar);
-    node.*.val = name;
+    node.*.variable = v;
     return node;
 }
 
+// ローカル変数のリストを一時的に保有するためのグローバル変数
+// 最終的にFuncに代入して使う
+var locals: ArrayList(*Obj) = undefined;
+
+fn newLVar(name: [:0]u8) !*Obj {
+    var lvar = globals.allocator.create(Obj) catch @panic("cannot allocate Obj");
+    lvar.* = Obj{
+        .name = name,
+        .offset = 0,
+    };
+    locals.append(lvar) catch @panic("ローカル変数のパースに失敗しました");
+    return lvar;
+}
+
+fn findVar(token: Token) ?*Obj {
+    for (locals.items) |lv| {
+        if (streq(lv.*.name, token.val)) {
+            return lv;
+        }
+    }
+    return null;
+}
+
 // program = stmt*
-pub fn parse(tokens: []Token, ti: *usize) !ArrayList(*Node) {
+pub fn parse(tokens: []Token, ti: *usize) !*Func {
     var nodes = ArrayList(*Node).init(globals.allocator);
+    locals = ArrayList(*Obj).init(globals.allocator);
     while (ti.* < tokens.len) {
         try nodes.append(stmt(tokens, ti));
     }
-    return nodes;
+    var func = try globals.allocator.create(Func);
+    func.* = Func{
+        .nodes = nodes,
+        .locals = locals,
+        .stack_size = 0,
+    };
+    return func;
 }
 
 // stmt = expr ";"
@@ -203,8 +248,12 @@ pub fn primary(tokens: []Token, ti: *usize) *Node {
     }
 
     if (token.kind == TokenKind.TkIdent) {
+        var v = findVar(token);
+        if (v == null) {
+            v = try newLVar(token.val);
+        }
         ti.* += 1;
-        return newVar(token.val);
+        return newVarNode(v.?);
     }
 
     if (token.kind == TokenKind.TkNum) {

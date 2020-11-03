@@ -31,6 +31,6 @@ assert 1 '(5 > 4) != (100 <= 1);'
 assert 2 '3 + 20 / 5; 4 - 2;'
 
 assert 1 'a = 1;b = 2; b - a;'
-assert 14 'x = 10; y = 3; x * y - 10 - (2 * 3);'
+assert 14 'abc = 10; def = 3; abc * def - 10 - (2 * 3);'
 
 echo OK

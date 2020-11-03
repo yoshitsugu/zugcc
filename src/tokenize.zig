@@ -40,10 +40,11 @@ pub fn tokenize(str: [*:0]const u8) !ArrayList(Token) {
             try tokens.append(num);
             continue;
         }
-        if (isIdent(c)) {
-            const ident = try newToken(.TkIdent, str[i .. i + 1], i);
+        if (isIdentHead(c)) {
+            const h = i;
+            i = readIdent(str, i);
+            const ident = try newToken(.TkIdent, str[h..i], i);
             try tokens.append(ident);
-            i += 1;
             continue;
         }
         const puncts_end = readPuncts(str, i);
@@ -81,8 +82,23 @@ fn isPunct(c: u8) bool {
     return false;
 }
 
-fn isIdent(c: u8) bool {
-    return 'a' <= c and c <= 'z';
+fn isIdentHead(c: u8) bool {
+    return ('a' <= c and c <= 'z') or ('A' <= c and c <= 'Z') or c == '_';
+}
+
+fn isIdentTail(c: u8) bool {
+    return isIdentHead(c) or ('0' <= c and c <= '9');
+}
+
+fn readIdent(str: [*:0]const u8, i: usize) usize {
+    if (str[i] == 0 or !isIdentHead(str[i])) {
+        return i;
+    }
+    var h = i + 1;
+    while (str[h] != 0 and isIdentTail(str[h])) {
+        h += 1;
+    }
+    return h;
 }
 
 fn readPuncts(str: [*:0]const u8, i: usize) usize {

@@ -25,7 +25,7 @@ pub fn main() !void {
     setTargetString(&arg);
     const tokenized = try tokenize(arg);
     var ti: usize = 0;
-    const nodes = try parse(tokenized.items, &ti);
+    const function = try parse(tokenized.items, &ti);
 
-    try codegen(nodes);
+    try codegen(function);
 }
