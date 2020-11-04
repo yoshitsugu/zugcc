@@ -26,6 +26,7 @@ pub const NodeKind = enum {
     NdReturn, // return
     NdBlock, // { ... }
     NdIf, // if
+    NdFor, // for
     NdExprStmt, // expression statement
     NdVar, // 変数
     NdNum, // 数値
@@ -39,10 +40,12 @@ pub const Node = struct {
 
     body: ?*Node, // NdBlockのときに使う
 
-    // if 文で使う
+    // if, for 文で使う
     cond: ?*Node,
     then: ?*Node,
     els: ?*Node,
+    init: ?*Node,
+    inc: ?*Node,
 
     variable: ?*Obj, // 変数、NdVarのときに使う
     val: ?[:0]u8, // NdNumのときに使われる
@@ -57,6 +60,8 @@ pub const Node = struct {
             .cond = null,
             .then = null,
             .els = null,
+            .init = null,
+            .inc = null,
             .variable = null,
             .val = null,
         };
@@ -151,6 +156,7 @@ pub fn parse(tokens: []Token, ti: *usize) !*Func {
 
 // stmt = "return" expr ";"
 //      | "if" "(" expr ")" stmt ("else" stmt)?
+//      | "for" "(" expr-stmt expr? ";" expr? ")" stmt
 //      | "{" compound-stmt
 //      | expr-stmt
 pub fn stmt(tokens: []Token, ti: *usize) *Node {
@@ -168,6 +174,25 @@ pub fn stmt(tokens: []Token, ti: *usize) *Node {
         if (consumeTokVal(tokens, ti, "else")) {
             node.*.els = stmt(tokens, ti);
         }
+        return node;
+    }
+    if (consumeTokVal(tokens, ti, "for")) {
+        const node = Node.allocInit(.NdFor);
+        skip(tokens, ti, "(");
+
+        node.*.init = exprStmt(tokens, ti);
+
+        if (!consumeTokVal(tokens, ti, ";")) {
+            node.*.cond = expr(tokens, ti);
+            skip(tokens, ti, ";");
+        }
+
+        if (!consumeTokVal(tokens, ti, ")")) {
+            node.*.inc = expr(tokens, ti);
+            skip(tokens, ti, ")");
+        }
+
+        node.*.then = stmt(tokens, ti);
         return node;
     }
     if (consumeTokVal(tokens, ti, "{")) {

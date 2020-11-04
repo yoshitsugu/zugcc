@@ -32,9 +32,9 @@ pub fn codegen(func: *Func) !void {
 }
 
 fn genStmt(node: *Node) anyerror!void {
-    const c = count();
     switch (node.*.kind) {
         NodeKind.NdIf => {
+            const c = count();
             try genExpr(node.*.cond);
             try print("  cmp $0, %rax\n", .{});
             try print("  je .L.else.{}\n", .{c});
@@ -43,6 +43,23 @@ fn genStmt(node: *Node) anyerror!void {
             try print(".L.else.{}:\n", .{c});
             if (node.*.els != null)
                 try genStmt(node.*.els.?);
+            try print(".L.end.{}:\n", .{c});
+            return;
+        },
+        NodeKind.NdFor => {
+            const c = count();
+            if (node.*.init != null)
+                try genStmt(node.*.init.?);
+            try print(".L.begin.{}:\n", .{c});
+            if (node.*.cond != null) {
+                try genExpr(node.*.cond);
+                try print("  cmp $0, %rax\n", .{});
+                try print("  je .L.end.{}\n", .{c});
+            }
+            try genStmt(node.*.then.?);
+            if (node.*.inc != null)
+                try genExpr(node.*.inc);
+            try print("  jmp .L.begin.{}\n", .{c});
             try print(".L.end.{}:\n", .{c});
             return;
         },
