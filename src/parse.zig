@@ -23,6 +23,8 @@ pub const NodeKind = enum {
     NdLt, // <
     NdLe, // <=
     NdAssign, // =
+    NdAddr, // 単項演算子の&
+    NdDeref, // 単項演算子の*
     NdReturn, // return
     NdBlock, // { ... }
     NdIf, // if
@@ -337,17 +339,21 @@ pub fn mul(tokens: []Token, ti: *usize) *Node {
     return node;
 }
 
-// unary = ("+" | "-") unary
+// unary = ("+" | "-" | "*" | "&") unary
 //       | primary
 pub fn unary(tokens: []Token, ti: *usize) *Node {
     const token = tokens[ti.*];
-    if (streq(token.val, "+")) {
-        ti.* += 1;
+    if (consumeTokVal(tokens, ti, "+")) {
         return unary(tokens, ti);
     }
-    if (streq(token.val, "-")) {
-        ti.* += 1;
+    if (consumeTokVal(tokens, ti, "-")) {
         return newUnary(.NdNeg, unary(tokens, ti), getOrLast(tokens, ti));
+    }
+    if (consumeTokVal(tokens, ti, "&")) {
+        return newUnary(.NdAddr, unary(tokens, ti), getOrLast(tokens, ti));
+    }
+    if (consumeTokVal(tokens, ti, "*")) {
+        return newUnary(.NdDeref, unary(tokens, ti), getOrLast(tokens, ti));
     }
     return primary(tokens, ti);
 }

@@ -105,6 +105,15 @@ fn genExpr(nodeWithNull: ?*Node) anyerror!void {
             try print("  mov (%rax), %rax\n", .{});
             return;
         },
+        NodeKind.NdDeref => {
+            try genExpr(node.*.lhs);
+            try print("  mov (%rax), %rax\n", .{});
+            return;
+        },
+        NodeKind.NdAddr => {
+            try genAddr(node.*.lhs.?);
+            return;
+        },
         NodeKind.NdAssign => {
             try genAddr(node.*.lhs.?);
             try push();
@@ -158,19 +167,33 @@ fn pop(arg: [:0]const u8) !void {
 }
 
 fn genAddr(node: *Node) !void {
-    if (node.*.kind == NodeKind.NdVar) {
-        try print("  lea {}(%rbp), %rax\n", .{node.*.variable.?.*.offset});
-        return;
+    switch (node.*.kind) {
+        NodeKind.NdVar => {
+            try print("  lea {}(%rbp), %rax\n", .{node.*.variable.?.*.offset});
+            return;
+        },
+        NodeKind.NdDeref => {
+            try genExpr(node.*.lhs);
+            return;
+        },
+        else => errorAt(node.*.tok.*.loc, "ローカル変数ではありません"),
     }
-
-    errorAt(node.*.tok.*.loc, "ローカル変数ではありません");
 }
 
 fn assignLvarOffsets(func: *Func) void {
     var offset: i32 = 0;
-    for (func.*.locals.items) |lv| {
-        offset += 8;
-        lv.offset = -offset;
+    const ls = func.*.locals.items;
+    if (ls.len > 0) {
+        var li: usize = ls.len - 1;
+        while (true) {
+            offset += 8;
+            ls[li].offset = -offset;
+            if (li > 0) {
+                li -= 1;
+            } else {
+                break;
+            }
+        }
     }
     func.*.stack_size = alignTo(offset, 16);
 }

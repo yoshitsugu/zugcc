@@ -48,4 +48,7 @@ assert 3 '{ for (;;) {return 3;} return 5; }'
 assert 13 '{ a = 10; b = 0; while (b < 3) { a = a + 1; b = b + 1; } return a; }'
 assert 3 '{ while (1) {return 3;} return 5; }'
 
+assert 20 '{ a = 1; b = &a; *b = 20; return a; }'
+assert 7 '{ a = 1; b = 7; return *(&a + 8); }'
+
 echo OK

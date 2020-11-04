@@ -7,7 +7,7 @@ const globals = @import("globals.zig");
 const stdout = std.io.getStdOut().outStream();
 const print = stdout.print;
 
-const PUNCT_CHARS = "+-*/()<>;={}";
+const PUNCT_CHARS = "+-*/()<>;={}&";
 const PUNCT_STRS = [_][:0]const u8{ "==", "!=", "<=", ">=" };
 const KEYWORDS = [_][:0]const u8{ "return", "if", "else", "for", "while" };
 
