@@ -9,6 +9,7 @@ const Func = parse.Func;
 const assert = @import("std").debug.assert;
 
 var depth: usize = 0;
+var count_i: usize = 0;
 
 pub fn codegen(func: *Func) !void {
     _ = assignLvarOffsets(func);
@@ -31,7 +32,20 @@ pub fn codegen(func: *Func) !void {
 }
 
 fn genStmt(node: *Node) anyerror!void {
+    const c = count();
     switch (node.*.kind) {
+        NodeKind.NdIf => {
+            try genExpr(node.*.cond);
+            try print("  cmp $0, %rax\n", .{});
+            try print("  je .L.else.{}\n", .{c});
+            try genStmt(node.*.then.?);
+            try print("  jmp .L.end.{}\n", .{c});
+            try print(".L.else.{}:\n", .{c});
+            if (node.*.els != null)
+                try genStmt(node.*.els.?);
+            try print(".L.end.{}:\n", .{c});
+            return;
+        },
         NodeKind.NdBlock => {
             var n = node.*.body;
             while (n != null) {
@@ -145,4 +159,9 @@ fn assignLvarOffsets(func: *Func) void {
 // アライン処理。関数を呼び出す前にRBPを16アラインしないといけない。
 fn alignTo(n: i32, a: i32) i32 {
     return @divFloor((n + a - 1), a) * a;
+}
+
+fn count() !usize {
+    count_i += 1;
+    return count_i;
 }

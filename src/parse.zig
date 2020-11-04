@@ -25,6 +25,7 @@ pub const NodeKind = enum {
     NdAssign, // =
     NdReturn, // return
     NdBlock, // { ... }
+    NdIf, // if
     NdExprStmt, // expression statement
     NdVar, // 変数
     NdNum, // 数値
@@ -38,6 +39,11 @@ pub const Node = struct {
 
     body: ?*Node, // NdBlockのときに使う
 
+    // if 文で使う
+    cond: ?*Node,
+    then: ?*Node,
+    els: ?*Node,
+
     variable: ?*Obj, // 変数、NdVarのときに使う
     val: ?[:0]u8, // NdNumのときに使われる
 
@@ -48,9 +54,18 @@ pub const Node = struct {
             .lhs = null,
             .rhs = null,
             .body = null,
+            .cond = null,
+            .then = null,
+            .els = null,
             .variable = null,
             .val = null,
         };
+    }
+
+    pub fn allocInit(kind: NodeKind) *Node {
+        var node = globals.allocator.create(Node) catch @panic("cannot allocate Node");
+        node.* = Node.init(kind);
+        return node;
     }
 };
 
@@ -68,36 +83,32 @@ pub const Func = struct {
 };
 
 pub fn newBinary(kind: NodeKind, lhs: *Node, rhs: *Node) *Node {
-    var node = globals.allocator.create(Node) catch @panic("cannot allocate Node");
-    node.* = Node.init(kind);
+    var node = Node.allocInit(kind);
     node.*.lhs = lhs;
     node.*.rhs = rhs;
     return node;
 }
 
 pub fn newUnary(kind: NodeKind, lhs: *Node) *Node {
-    var node = globals.allocator.create(Node) catch @panic("cannot allocate Node");
-    node.* = Node.init(kind);
+    var node = Node.allocInit(kind);
     node.*.lhs = lhs;
     return node;
 }
 
 fn newNum(val: [:0]u8) *Node {
-    var node = globals.allocator.create(Node) catch @panic("cannot allocate Node");
-    node.* = Node.init(.NdNum);
+    var node = Node.allocInit(.NdNum);
     node.*.val = val;
     return node;
 }
 
 fn newVarNode(v: *Obj) *Node {
-    var node = globals.allocator.create(Node) catch @panic("cannot allocate Node");
-    node.* = Node.init(.NdVar);
+    var node = Node.allocInit(.NdVar);
     node.*.variable = v;
     return node;
 }
 
 fn newBlockNode(n: ?*Node) *Node {
-    var node = globals.allocator.create(Node) catch @panic("cannot allocate Node");
+    var node = Node.allocInit(.NdBlock);
     node.* = Node.init(.NdBlock);
     node.*.body = n;
     return node;
@@ -139,12 +150,24 @@ pub fn parse(tokens: []Token, ti: *usize) !*Func {
 }
 
 // stmt = "return" expr ";"
+//      | "if" "(" expr ")" stmt ("else" stmt)?
 //      | "{" compound-stmt
 //      | expr-stmt
 pub fn stmt(tokens: []Token, ti: *usize) *Node {
     if (consumeTokVal(tokens, ti, "return")) {
         const node = newUnary(.NdReturn, expr(tokens, ti));
         skip(tokens, ti, ";");
+        return node;
+    }
+    if (consumeTokVal(tokens, ti, "if")) {
+        const node = Node.allocInit(.NdIf);
+        skip(tokens, ti, "(");
+        node.*.cond = expr(tokens, ti);
+        skip(tokens, ti, ")");
+        node.*.then = stmt(tokens, ti);
+        if (consumeTokVal(tokens, ti, "else")) {
+            node.*.els = stmt(tokens, ti);
+        }
         return node;
     }
     if (consumeTokVal(tokens, ti, "{")) {
