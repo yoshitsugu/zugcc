@@ -172,8 +172,11 @@ fn compoundStmt(tokens: []Token, ti: *usize) *Node {
     return newBlockNode(head.next);
 }
 
-// expr-stmt = expr ";"
+// expr-stmt = expr? ";"
 fn exprStmt(tokens: []Token, ti: *usize) *Node {
+    if (consumeTokVal(tokens, ti, ";")) {
+        return newBlockNode(null);
+    }
     const node = newUnary(.NdExprStmt, expr(tokens, ti));
     skip(tokens, ti, ";");
     return node;

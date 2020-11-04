@@ -33,5 +33,7 @@ assert 7 '{ return 3 + 20 / 5;  4 - 2; }'
 
 assert 1 '{ a = 1;b = 2; return b - a; }'
 assert 14 '{ abc = 10; def = 3; return abc * def - 10 - (2 * 3); }'
+assert 3 '{ a = 1; {b = 1;} return 3;}'
+assert 5 '{ ;{;}; return 5;}'
 
 echo OK
