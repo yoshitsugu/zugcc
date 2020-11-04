@@ -26,7 +26,7 @@ pub const NodeKind = enum {
     NdReturn, // return
     NdBlock, // { ... }
     NdIf, // if
-    NdFor, // for
+    NdFor, // "for" or "while"
     NdExprStmt, // expression statement
     NdVar, // 変数
     NdNum, // 数値
@@ -157,6 +157,7 @@ pub fn parse(tokens: []Token, ti: *usize) !*Func {
 // stmt = "return" expr ";"
 //      | "if" "(" expr ")" stmt ("else" stmt)?
 //      | "for" "(" expr-stmt expr? ";" expr? ")" stmt
+//      | "while" "(" expr ")" stmt
 //      | "{" compound-stmt
 //      | expr-stmt
 pub fn stmt(tokens: []Token, ti: *usize) *Node {
@@ -192,6 +193,14 @@ pub fn stmt(tokens: []Token, ti: *usize) *Node {
             skip(tokens, ti, ")");
         }
 
+        node.*.then = stmt(tokens, ti);
+        return node;
+    }
+    if (consumeTokVal(tokens, ti, "while")) {
+        const node = Node.allocInit(.NdFor);
+        skip(tokens, ti, "(");
+        node.*.cond = expr(tokens, ti);
+        skip(tokens, ti, ")");
         node.*.then = stmt(tokens, ti);
         return node;
     }

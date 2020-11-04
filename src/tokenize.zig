@@ -9,7 +9,7 @@ const print = stdout.print;
 
 const PUNCT_CHARS = "+-*/()<>;={}";
 const PUNCT_STRS = [_][:0]const u8{ "==", "!=", "<=", ">=" };
-const KEYWORDS = [_][:0]const u8{ "return", "if", "else", "for" };
+const KEYWORDS = [_][:0]const u8{ "return", "if", "else", "for", "while" };
 
 pub const TokenKind = enum {
     TkIdent, // 識別子
