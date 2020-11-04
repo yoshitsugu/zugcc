@@ -7,6 +7,8 @@ const NodeKind = parse.NodeKind;
 const Node = parse.Node;
 const Func = parse.Func;
 const assert = @import("std").debug.assert;
+const err = @import("error.zig");
+const errorAt = err.errorAt;
 
 var depth: usize = 0;
 var count_i: usize = 0;
@@ -78,7 +80,7 @@ fn genStmt(node: *Node) anyerror!void {
             try genExpr(node.*.lhs);
         },
         else => {
-            std.debug.panic("invalid statement {}", .{node.*.kind});
+            errorAt(node.*.tok.*.loc, "invalid statement");
         },
     }
 }
@@ -141,7 +143,7 @@ fn genExpr(nodeWithNull: ?*Node) anyerror!void {
             }
             try print("  movzb %al, %rax\n", .{});
         },
-        else => @panic("code generationに失敗しました"),
+        else => errorAt(node.*.tok.*.loc, "code generationに失敗しました"),
     }
 }
 
@@ -161,7 +163,7 @@ fn genAddr(node: *Node) !void {
         return;
     }
 
-    @panic("ローカル変数ではありません");
+    errorAt(node.*.tok.*.loc, "ローカル変数ではありません");
 }
 
 fn assignLvarOffsets(func: *Func) void {

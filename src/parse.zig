@@ -35,6 +35,8 @@ pub const NodeKind = enum {
 pub const Node = struct {
     kind: NodeKind, // 種別
     next: ?*Node, // 次のノード。NdExprStmtのときに使う
+    tok: *Token, // エラー情報の補足のためにトークンの代表値を持っておく
+
     lhs: ?*Node, // Left-hand side
     rhs: ?*Node, // Right-hand side
 
@@ -50,10 +52,11 @@ pub const Node = struct {
     variable: ?*Obj, // 変数、NdVarのときに使う
     val: ?[:0]u8, // NdNumのときに使われる
 
-    pub fn init(kind: NodeKind) Node {
+    pub fn init(kind: NodeKind, tok: *Token) Node {
         return Node{
             .kind = kind,
             .next = null,
+            .tok = tok,
             .lhs = null,
             .rhs = null,
             .body = null,
@@ -67,9 +70,9 @@ pub const Node = struct {
         };
     }
 
-    pub fn allocInit(kind: NodeKind) *Node {
+    pub fn allocInit(kind: NodeKind, tok: *Token) *Node {
         var node = globals.allocator.create(Node) catch @panic("cannot allocate Node");
-        node.* = Node.init(kind);
+        node.* = Node.init(kind, tok);
         return node;
     }
 };
@@ -87,34 +90,33 @@ pub const Func = struct {
     stack_size: i32,
 };
 
-pub fn newBinary(kind: NodeKind, lhs: *Node, rhs: *Node) *Node {
-    var node = Node.allocInit(kind);
+pub fn newBinary(kind: NodeKind, lhs: *Node, rhs: *Node, tok: *Token) *Node {
+    var node = Node.allocInit(kind, tok);
     node.*.lhs = lhs;
     node.*.rhs = rhs;
     return node;
 }
 
-pub fn newUnary(kind: NodeKind, lhs: *Node) *Node {
-    var node = Node.allocInit(kind);
+pub fn newUnary(kind: NodeKind, lhs: *Node, tok: *Token) *Node {
+    var node = Node.allocInit(kind, tok);
     node.*.lhs = lhs;
     return node;
 }
 
-fn newNum(val: [:0]u8) *Node {
-    var node = Node.allocInit(.NdNum);
+fn newNum(val: [:0]u8, tok: *Token) *Node {
+    var node = Node.allocInit(.NdNum, tok);
     node.*.val = val;
     return node;
 }
 
-fn newVarNode(v: *Obj) *Node {
-    var node = Node.allocInit(.NdVar);
+fn newVarNode(v: *Obj, tok: *Token) *Node {
+    var node = Node.allocInit(.NdVar, tok);
     node.*.variable = v;
     return node;
 }
 
-fn newBlockNode(n: ?*Node) *Node {
-    var node = Node.allocInit(.NdBlock);
-    node.* = Node.init(.NdBlock);
+fn newBlockNode(n: ?*Node, tok: *Token) *Node {
+    var node = Node.allocInit(.NdBlock, tok);
     node.*.body = n;
     return node;
 }
@@ -142,6 +144,13 @@ fn findVar(token: Token) ?*Obj {
     return null;
 }
 
+fn getOrLast(tokens: []Token, ti: *usize) *Token {
+    if (ti.* < tokens.len) {
+        return &tokens[ti.*];
+    }
+    return &tokens[tokens.len - 1];
+}
+
 // program = stmt*
 pub fn parse(tokens: []Token, ti: *usize) !*Func {
     locals = ArrayList(*Obj).init(globals.allocator);
@@ -162,12 +171,12 @@ pub fn parse(tokens: []Token, ti: *usize) !*Func {
 //      | expr-stmt
 pub fn stmt(tokens: []Token, ti: *usize) *Node {
     if (consumeTokVal(tokens, ti, "return")) {
-        const node = newUnary(.NdReturn, expr(tokens, ti));
+        const node = newUnary(.NdReturn, expr(tokens, ti), getOrLast(tokens, ti));
         skip(tokens, ti, ";");
         return node;
     }
     if (consumeTokVal(tokens, ti, "if")) {
-        const node = Node.allocInit(.NdIf);
+        const node = Node.allocInit(.NdIf, getOrLast(tokens, ti));
         skip(tokens, ti, "(");
         node.*.cond = expr(tokens, ti);
         skip(tokens, ti, ")");
@@ -178,7 +187,7 @@ pub fn stmt(tokens: []Token, ti: *usize) *Node {
         return node;
     }
     if (consumeTokVal(tokens, ti, "for")) {
-        const node = Node.allocInit(.NdFor);
+        const node = Node.allocInit(.NdFor, getOrLast(tokens, ti));
         skip(tokens, ti, "(");
 
         node.*.init = exprStmt(tokens, ti);
@@ -197,7 +206,7 @@ pub fn stmt(tokens: []Token, ti: *usize) *Node {
         return node;
     }
     if (consumeTokVal(tokens, ti, "while")) {
-        const node = Node.allocInit(.NdFor);
+        const node = Node.allocInit(.NdFor, getOrLast(tokens, ti));
         skip(tokens, ti, "(");
         node.*.cond = expr(tokens, ti);
         skip(tokens, ti, ")");
@@ -212,7 +221,7 @@ pub fn stmt(tokens: []Token, ti: *usize) *Node {
 
 // compound-stmt = stmt* "}"
 fn compoundStmt(tokens: []Token, ti: *usize) *Node {
-    var head = Node.init(.NdNum);
+    var head = Node.init(.NdNum, getOrLast(tokens, ti));
     var cur: *Node = &head;
     var end = false;
     while (ti.* < tokens.len) {
@@ -226,15 +235,15 @@ fn compoundStmt(tokens: []Token, ti: *usize) *Node {
     if (!end) {
         errorAt(tokens[tokens.len - 1].loc, " } がありません");
     }
-    return newBlockNode(head.next);
+    return newBlockNode(head.next, getOrLast(tokens, ti));
 }
 
 // expr-stmt = expr? ";"
 fn exprStmt(tokens: []Token, ti: *usize) *Node {
     if (consumeTokVal(tokens, ti, ";")) {
-        return newBlockNode(null);
+        return newBlockNode(null, getOrLast(tokens, ti));
     }
-    const node = newUnary(.NdExprStmt, expr(tokens, ti));
+    const node = newUnary(.NdExprStmt, expr(tokens, ti), getOrLast(tokens, ti));
     skip(tokens, ti, ";");
     return node;
 }
@@ -249,7 +258,7 @@ pub fn assign(tokens: []Token, ti: *usize) *Node {
     var node = equality(tokens, ti);
 
     if (consumeTokVal(tokens, ti, "=")) {
-        node = newBinary(.NdAssign, node, assign(tokens, ti));
+        node = newBinary(.NdAssign, node, assign(tokens, ti), getOrLast(tokens, ti));
     }
     return node;
 }
@@ -261,9 +270,9 @@ pub fn equality(tokens: []Token, ti: *usize) *Node {
     while (ti.* < tokens.len) {
         const token = tokens[ti.*];
         if (consumeTokVal(tokens, ti, "==")) {
-            node = newBinary(.NdEq, node, relational(tokens, ti));
+            node = newBinary(.NdEq, node, relational(tokens, ti), getOrLast(tokens, ti));
         } else if (consumeTokVal(tokens, ti, "!=")) {
-            node = newBinary(.NdNe, node, relational(tokens, ti));
+            node = newBinary(.NdNe, node, relational(tokens, ti), getOrLast(tokens, ti));
         } else {
             break;
         }
@@ -278,13 +287,13 @@ pub fn relational(tokens: []Token, ti: *usize) *Node {
     while (ti.* < tokens.len) {
         const token = tokens[ti.*];
         if (consumeTokVal(tokens, ti, "<")) {
-            node = newBinary(.NdLt, node, add(tokens, ti));
+            node = newBinary(.NdLt, node, add(tokens, ti), getOrLast(tokens, ti));
         } else if (consumeTokVal(tokens, ti, "<=")) {
-            node = newBinary(.NdLe, node, add(tokens, ti));
+            node = newBinary(.NdLe, node, add(tokens, ti), getOrLast(tokens, ti));
         } else if (consumeTokVal(tokens, ti, ">")) {
-            node = newBinary(.NdLt, add(tokens, ti), node);
+            node = newBinary(.NdLt, add(tokens, ti), node, getOrLast(tokens, ti));
         } else if (consumeTokVal(tokens, ti, ">=")) {
-            node = newBinary(.NdLe, add(tokens, ti), node);
+            node = newBinary(.NdLe, add(tokens, ti), node, getOrLast(tokens, ti));
         } else {
             break;
         }
@@ -299,9 +308,9 @@ pub fn add(tokens: []Token, ti: *usize) *Node {
     while (ti.* < tokens.len) {
         const token = tokens[ti.*];
         if (consumeTokVal(tokens, ti, "+")) {
-            node = newBinary(.NdAdd, node, mul(tokens, ti));
+            node = newBinary(.NdAdd, node, mul(tokens, ti), getOrLast(tokens, ti));
         } else if (consumeTokVal(tokens, ti, "-")) {
-            node = newBinary(.NdSub, node, mul(tokens, ti));
+            node = newBinary(.NdSub, node, mul(tokens, ti), getOrLast(tokens, ti));
         } else {
             break;
         }
@@ -317,10 +326,10 @@ pub fn mul(tokens: []Token, ti: *usize) *Node {
         const token = tokens[ti.*];
         if (streq(token.val, "*")) {
             ti.* += 1;
-            node = newBinary(.NdMul, node, unary(tokens, ti));
+            node = newBinary(.NdMul, node, unary(tokens, ti), getOrLast(tokens, ti));
         } else if (streq(token.val, "/")) {
             ti.* += 1;
-            node = newBinary(.NdDiv, node, unary(tokens, ti));
+            node = newBinary(.NdDiv, node, unary(tokens, ti), getOrLast(tokens, ti));
         } else {
             break;
         }
@@ -338,7 +347,7 @@ pub fn unary(tokens: []Token, ti: *usize) *Node {
     }
     if (streq(token.val, "-")) {
         ti.* += 1;
-        return newUnary(.NdNeg, unary(tokens, ti));
+        return newUnary(.NdNeg, unary(tokens, ti), getOrLast(tokens, ti));
     }
     return primary(tokens, ti);
 }
@@ -359,12 +368,12 @@ pub fn primary(tokens: []Token, ti: *usize) *Node {
             v = try newLVar(token.val);
         }
         ti.* += 1;
-        return newVarNode(v.?);
+        return newVarNode(v.?, getOrLast(tokens, ti));
     }
 
     if (token.kind == TokenKind.TkNum) {
         ti.* += 1;
-        return newNum(token.val);
+        return newNum(token.val, getOrLast(tokens, ti));
     }
 
     errorAt(token.loc, "expected an expression");
@@ -378,7 +387,7 @@ fn skip(tokens: []Token, ti: *usize, s: [:0]const u8) void {
     if (streq(token.val, s)) {
         ti.* += 1;
     } else {
-        const string = allocPrint0(globals.allocator, "期待した文字列がありません: {}", .{s}) catch "期待した文字列がありません";
+        const string = allocPrint0(globals.allocator, "期待した文字列 {} がありません", .{s}) catch "期待した文字列がありません";
         errorAt(token.loc, string);
     }
 }
