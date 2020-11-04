@@ -21,10 +21,8 @@ pub fn codegen(func: *Func) !void {
     try print("  mov %rsp, %rbp\n", .{});
     try print("  sub ${}, %rsp\n", .{func.*.stack_size});
 
-    for (func.*.nodes.items) |node| {
-        try genStmt(node);
-        assert(depth == 0);
-    }
+    try genStmt(func.*.body);
+    assert(depth == 0);
 
     try print(".L.return:\n", .{});
     try print("  mov %rbp, %rsp\n", .{});
@@ -32,13 +30,26 @@ pub fn codegen(func: *Func) !void {
     try print("  ret\n", .{});
 }
 
-fn genStmt(node: *Node) !void {
-    if (node.kind == NodeKind.NdReturn) {
-        try genExpr(node.*.lhs);
-        try print("  jmp .L.return\n", .{});
-        return;
+fn genStmt(node: *Node) anyerror!void {
+    switch (node.*.kind) {
+        NodeKind.NdBlock => {
+            var n = node.*.body;
+            while (n != null) {
+                try genStmt(n.?);
+                n = n.?.*.next;
+            }
+        },
+        NodeKind.NdReturn => {
+            try genExpr(node.*.lhs);
+            try print("  jmp .L.return\n", .{});
+        },
+        NodeKind.NdExprStmt => {
+            try genExpr(node.*.lhs);
+        },
+        else => {
+            std.debug.panic("invalid statement {}", .{node.*.kind});
+        },
     }
-    try genExpr(node);
 }
 
 fn genExpr(nodeWithNull: ?*Node) anyerror!void {

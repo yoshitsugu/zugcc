@@ -24,22 +24,30 @@ pub const NodeKind = enum {
     NdLe, // <=
     NdAssign, // =
     NdReturn, // return
+    NdBlock, // { ... }
+    NdExprStmt, // expression statement
     NdVar, // 変数
     NdNum, // 数値
 };
 
 pub const Node = struct {
     kind: NodeKind, // 種別
+    next: ?*Node, // 次のノード。NdExprStmtのときに使う
     lhs: ?*Node, // Left-hand side
     rhs: ?*Node, // Right-hand side
-    variable: ?*Obj, // 変数
-    val: ?[:0]u8, // Numのときに使われる
+
+    body: ?*Node, // NdBlockのときに使う
+
+    variable: ?*Obj, // 変数、NdVarのときに使う
+    val: ?[:0]u8, // NdNumのときに使われる
 
     pub fn init(kind: NodeKind) Node {
         return Node{
             .kind = kind,
+            .next = null,
             .lhs = null,
             .rhs = null,
+            .body = null,
             .variable = null,
             .val = null,
         };
@@ -54,7 +62,7 @@ pub const Obj = struct {
 
 // 関数
 pub const Func = struct {
-    nodes: ArrayList(*Node),
+    body: *Node, // 関数の開始ノード
     locals: ArrayList(*Obj),
     stack_size: i32,
 };
@@ -88,6 +96,13 @@ fn newVarNode(v: *Obj) *Node {
     return node;
 }
 
+fn newBlockNode(n: ?*Node) *Node {
+    var node = globals.allocator.create(Node) catch @panic("cannot allocate Node");
+    node.* = Node.init(.NdBlock);
+    node.*.body = n;
+    return node;
+}
+
 // ローカル変数のリストを一時的に保有するためのグローバル変数
 // 最終的にFuncに代入して使う
 var locals: ArrayList(*Obj) = undefined;
@@ -113,28 +128,53 @@ fn findVar(token: Token) ?*Obj {
 
 // program = stmt*
 pub fn parse(tokens: []Token, ti: *usize) !*Func {
-    var nodes = ArrayList(*Node).init(globals.allocator);
     locals = ArrayList(*Obj).init(globals.allocator);
-    while (ti.* < tokens.len) {
-        try nodes.append(stmt(tokens, ti));
-    }
     var func = try globals.allocator.create(Func);
     func.* = Func{
-        .nodes = nodes,
+        .body = stmt(tokens, ti),
         .locals = locals,
         .stack_size = 0,
     };
     return func;
 }
 
-// stmt = "return"? expr ";"
+// stmt = "return" expr ";"
+//      | "{" compound-stmt
+//      | expr-stmt
 pub fn stmt(tokens: []Token, ti: *usize) *Node {
     if (consumeTokVal(tokens, ti, "return")) {
         const node = newUnary(.NdReturn, expr(tokens, ti));
         skip(tokens, ti, ";");
         return node;
     }
-    const node = expr(tokens, ti);
+    if (consumeTokVal(tokens, ti, "{")) {
+        return compoundStmt(tokens, ti);
+    }
+    return exprStmt(tokens, ti);
+}
+
+// compound-stmt = stmt* "}"
+fn compoundStmt(tokens: []Token, ti: *usize) *Node {
+    var head = Node.init(.NdNum);
+    var cur: *Node = &head;
+    var end = false;
+    while (ti.* < tokens.len) {
+        if (consumeTokVal(tokens, ti, "}")) {
+            end = true;
+            break;
+        }
+        cur.*.next = stmt(tokens, ti);
+        cur = cur.*.next.?;
+    }
+    if (!end) {
+        errorAt(tokens[tokens.len - 1].loc, " } がありません");
+    }
+    return newBlockNode(head.next);
+}
+
+// expr-stmt = expr ";"
+fn exprStmt(tokens: []Token, ti: *usize) *Node {
+    const node = newUnary(.NdExprStmt, expr(tokens, ti));
     skip(tokens, ti, ";");
     return node;
 }
