@@ -11,6 +11,10 @@ const Token = tokenize.Token;
 const TokenKind = tokenize.TokenKind;
 const streq = tokenize.streq;
 const globals = @import("globals.zig");
+const typezig = @import("type.zig");
+const TypeKind = typezig.TypeKind;
+const Type = typezig.Type;
+const addType = typezig.addType;
 
 pub const NodeKind = enum {
     NdAdd, // +
@@ -37,6 +41,7 @@ pub const NodeKind = enum {
 pub const Node = struct {
     kind: NodeKind, // 種別
     next: ?*Node, // 次のノード。NdExprStmtのときに使う
+    ty: ?*Type, // 型情報
     tok: *Token, // エラー情報の補足のためにトークンの代表値を持っておく
 
     lhs: ?*Node, // Left-hand side
@@ -58,6 +63,7 @@ pub const Node = struct {
         return Node{
             .kind = kind,
             .next = null,
+            .ty = null,
             .tok = tok,
             .lhs = null,
             .rhs = null,
@@ -155,6 +161,7 @@ fn getOrLast(tokens: []Token, ti: *usize) *Token {
 
 // program = stmt*
 pub fn parse(tokens: []Token, ti: *usize) !*Func {
+    Type.initGlobals();
     locals = ArrayList(*Obj).init(globals.allocator);
     var func = try globals.allocator.create(Func);
     func.* = Func{
@@ -233,6 +240,7 @@ fn compoundStmt(tokens: []Token, ti: *usize) *Node {
         }
         cur.*.next = stmt(tokens, ti);
         cur = cur.*.next.?;
+        addType(cur);
     }
     if (!end) {
         errorAt(tokens[tokens.len - 1].loc, " } がありません");
@@ -310,9 +318,9 @@ pub fn add(tokens: []Token, ti: *usize) *Node {
     while (ti.* < tokens.len) {
         const token = tokens[ti.*];
         if (consumeTokVal(tokens, ti, "+")) {
-            node = newBinary(.NdAdd, node, mul(tokens, ti), getOrLast(tokens, ti));
+            node = newAdd(node, mul(tokens, ti), getOrLast(tokens, ti));
         } else if (consumeTokVal(tokens, ti, "-")) {
-            node = newBinary(.NdSub, node, mul(tokens, ti), getOrLast(tokens, ti));
+            node = newSub(node, mul(tokens, ti), getOrLast(tokens, ti));
         } else {
             break;
         }
@@ -408,4 +416,62 @@ fn consumeTokVal(tokens: []Token, ti: *usize, s: [:0]const u8) bool {
         return true;
     }
     return false;
+}
+
+fn newAdd(lhs: *Node, rhs: *Node, tok: *Token) *Node {
+    addType(lhs);
+    addType(rhs);
+
+    // num + num
+    if (lhs.*.ty.?.*.isInteger() and rhs.*.ty.?.*.isInteger())
+        return newBinary(.NdAdd, lhs, rhs, tok);
+
+    // ptr + ptr はエラー
+    if (lhs.*.ty.?.*.base != null and rhs.*.ty.?.*.base != null)
+        errorAt(tok.loc, "invalid operands");
+
+    var l = lhs;
+    var r = rhs;
+
+    // num + ptrを ptr + numにそろえる
+    if (lhs.*.ty.?.*.base == null and rhs.*.ty.?.*.base != null) {
+        l = rhs;
+        r = lhs;
+    }
+
+    // ptr + num
+    // とりあえず8固定
+    r = newBinary(.NdMul, r, newNum(Type.INT_SIZE_STR, tok), tok);
+    addType(r);
+    var n = newBinary(.NdAdd, l, r, tok);
+    addType(n);
+    return n;
+}
+
+fn newSub(lhs: *Node, rhs: *Node, tok: *Token) *Node {
+    addType(lhs);
+    addType(rhs);
+
+    // num - num
+    if (lhs.*.ty.?.*.isInteger() and rhs.*.ty.?.*.isInteger())
+        return newBinary(.NdSub, lhs, rhs, tok);
+
+    // ptr - ptr はポインタ間にいくつ要素(ポインタの指す型)があるかを返す
+    if (lhs.*.ty.?.*.base != null and rhs.*.ty.?.*.base != null) {
+        const node = newBinary(.NdSub, lhs, rhs, tok);
+        node.*.ty = Type.allocInit(TypeKind.TyInt);
+        return newBinary(.NdDiv, node, newNum(Type.INT_SIZE_STR, tok), tok);
+    }
+
+    // ptr - num
+    // とりあえず8固定
+    if (lhs.*.ty.?.*.base != null and rhs.*.ty.?.*.base == null) {
+        var r = newBinary(.NdMul, rhs, newNum(Type.INT_SIZE_STR, tok), tok);
+        addType(r);
+        var n = newBinary(.NdSub, lhs, r, tok);
+        n.*.ty = lhs.*.ty;
+        return n;
+    }
+
+    errorAt(tok.loc, "Invalid operands");
 }
