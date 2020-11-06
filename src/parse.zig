@@ -57,7 +57,9 @@ pub const Node = struct {
     init: ?*Node,
     inc: ?*Node,
 
-    funcname: ?[:0]u8, // 関数呼出のときに使う
+    // 関数呼出のときに使う
+    funcname: ?[:0]u8,
+    args: ?*Node,
 
     variable: ?*Obj, // 変数、NdVarのときに使う
     val: ?[:0]u8, // NdNumのときに使われる
@@ -77,6 +79,7 @@ pub const Node = struct {
             .init = null,
             .inc = null,
             .funcname = null,
+            .args = null,
             .variable = null,
             .val = null,
         };
@@ -434,8 +437,7 @@ pub fn unary(tokens: []Token, ti: *usize) *Node {
     return primary(tokens, ti);
 }
 
-// primary = "(" expr ")" | ident args? | num
-// args = "(" ")"
+// primary = "(" expr ")" | ident func-args? | num
 pub fn primary(tokens: []Token, ti: *usize) *Node {
     const token = tokens[ti.*];
     if (streq(token.val, "(")) {
@@ -448,12 +450,7 @@ pub fn primary(tokens: []Token, ti: *usize) *Node {
     if (token.kind == TokenKind.TkIdent) {
         // 関数呼出のとき
         if (ti.* + 1 < tokens.len and consumeTokVal(tokens, &(ti.* + 1), "(")) {
-            ti.* += 1;
-            const n = Node.allocInit(.NdFuncall, &tokens[ti.*]);
-            n.*.funcname = token.val;
-            ti.* += 1;
-            skip(tokens, ti, ")");
-            return n;
+            return funcall(tokens, ti);
         }
         // 変数
         var v = findVar(token);
@@ -470,6 +467,27 @@ pub fn primary(tokens: []Token, ti: *usize) *Node {
     }
 
     errorAt(token.loc, "expected an expression");
+}
+
+// funcall = ident "(" (assign ("," assign)*)? ")"
+fn funcall(tokens: []Token, ti: *usize) *Node {
+    var start = &tokens[ti.*];
+    ti.* += 2;
+
+    const startTi = ti.*;
+    var head = Node.init(.NdNum, start);
+    var cur = &head;
+    while (!consumeTokVal(tokens, ti, ")")) {
+        if (startTi != ti.*)
+            skip(tokens, ti, ",");
+        cur.*.next = assign(tokens, ti);
+        cur = cur.*.next.?;
+    }
+
+    var node = Node.allocInit(.NdFuncall, start);
+    node.*.funcname = start.*.val;
+    node.*.args = head.next;
+    return node;
 }
 
 fn skip(tokens: []Token, ti: *usize, s: [:0]const u8) void {

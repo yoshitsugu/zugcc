@@ -12,6 +12,7 @@ const errorAt = err.errorAt;
 
 var depth: usize = 0;
 var count_i: usize = 0;
+var ARGREGS = [_][:0]const u8{ "%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9" };
 
 pub fn codegen(func: *Func) !void {
     _ = assignLvarOffsets(func);
@@ -123,6 +124,18 @@ fn genExpr(nodeWithNull: ?*Node) anyerror!void {
             return;
         },
         NodeKind.NdFuncall => {
+            var arg: ?*Node = node.*.args;
+            var nargs: usize = 0;
+            while (arg != null) {
+                try genExpr(arg.?);
+                try push();
+                nargs += 1;
+                arg = arg.?.*.next;
+            }
+            while (nargs > 0) {
+                try pop(ARGREGS[nargs - 1]);
+                nargs -= 1;
+            }
             try print("  mov $0, %rax\n", .{});
             try print("  call {}\n", .{node.*.funcname});
             return;
