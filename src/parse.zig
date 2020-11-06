@@ -33,6 +33,7 @@ pub const NodeKind = enum {
     NdBlock, // { ... }
     NdIf, // if
     NdFor, // "for" or "while"
+    NdFuncall, // 関数呼出
     NdExprStmt, // expression statement
     NdVar, // 変数
     NdNum, // 数値
@@ -56,6 +57,8 @@ pub const Node = struct {
     init: ?*Node,
     inc: ?*Node,
 
+    funcname: ?[:0]u8, // 関数呼出のときに使う
+
     variable: ?*Obj, // 変数、NdVarのときに使う
     val: ?[:0]u8, // NdNumのときに使われる
 
@@ -73,6 +76,7 @@ pub const Node = struct {
             .els = null,
             .init = null,
             .inc = null,
+            .funcname = null,
             .variable = null,
             .val = null,
         };
@@ -430,7 +434,8 @@ pub fn unary(tokens: []Token, ti: *usize) *Node {
     return primary(tokens, ti);
 }
 
-// primary = "(" expr ")" | ident | num
+// primary = "(" expr ")" | ident args? | num
+// args = "(" ")"
 pub fn primary(tokens: []Token, ti: *usize) *Node {
     const token = tokens[ti.*];
     if (streq(token.val, "(")) {
@@ -441,6 +446,16 @@ pub fn primary(tokens: []Token, ti: *usize) *Node {
     }
 
     if (token.kind == TokenKind.TkIdent) {
+        // 関数呼出のとき
+        if (ti.* + 1 < tokens.len and consumeTokVal(tokens, &(ti.* + 1), "(")) {
+            ti.* += 1;
+            const n = Node.allocInit(.NdFuncall, &tokens[ti.*]);
+            n.*.funcname = token.val;
+            ti.* += 1;
+            skip(tokens, ti, ")");
+            return n;
+        }
+        // 変数
         var v = findVar(token);
         if (v == null) {
             errorAt(token.loc, "変数が未定義です");

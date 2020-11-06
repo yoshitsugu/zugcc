@@ -122,6 +122,11 @@ fn genExpr(nodeWithNull: ?*Node) anyerror!void {
             try print("  mov %rax, (%rdi)\n", .{});
             return;
         },
+        NodeKind.NdFuncall => {
+            try print("  mov $0, %rax\n", .{});
+            try print("  call {}\n", .{node.*.funcname});
+            return;
+        },
         else => {},
     }
 

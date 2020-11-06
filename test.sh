@@ -3,12 +3,17 @@ set -e
 zig build
 set +e
 
+cat <<EOF | gcc -xc -c -o tmp2.o -
+int ret3() { return 3; }
+int ret5() { return 5; }
+EOF
+
 assert() {
   set -e
   expected="$1"
   input="$2"
   ./zig-cache/bin/zugcc "$input" > tmp.s || exit
-  gcc -static -o tmp tmp.s
+  gcc -static -o tmp tmp.s tmp2.o
   set +e
   ./tmp
   actual="$?"
@@ -52,5 +57,8 @@ assert 20 '{ int a = 1; int *b = &a; *b = 20; return a; }'
 assert 7 '{ int a = 1; int b = 7; return *(&a + 1); }'
 assert 5 '{ int x=3; return (&x+2)-&x+3; }'
 assert 30 '{ int x=3; int *y = &x; *y = 30; return x; }'
+
+assert 3 '{ return ret3(); }'
+assert 5 '{ return ret5(); }'
 
 echo OK
