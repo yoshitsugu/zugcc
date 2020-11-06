@@ -49,7 +49,7 @@ pub const Node = struct {
 
     body: ?*Node, // NdBlockのときに使う
 
-    // if, for 文で使う
+    // if, for, while 文で使う
     cond: ?*Node,
     then: ?*Node,
     els: ?*Node,
@@ -88,6 +88,7 @@ pub const Node = struct {
 // ローカル変数
 pub const Obj = struct {
     name: [:0]u8,
+    ty: ?*Type,
     offset: i32, // RBPからのオフセット
 };
 
@@ -133,10 +134,11 @@ fn newBlockNode(n: ?*Node, tok: *Token) *Node {
 // 最終的にFuncに代入して使う
 var locals: ArrayList(*Obj) = undefined;
 
-fn newLVar(name: [:0]u8) !*Obj {
+fn newLVar(name: [:0]u8, ty: *Type) !*Obj {
     var lvar = globals.allocator.create(Obj) catch @panic("cannot allocate Obj");
     lvar.* = Obj{
         .name = name,
+        .ty = ty,
         .offset = 0,
     };
     locals.append(lvar) catch @panic("ローカル変数のパースに失敗しました");
@@ -228,7 +230,7 @@ pub fn stmt(tokens: []Token, ti: *usize) *Node {
     return exprStmt(tokens, ti);
 }
 
-// compound-stmt = stmt* "}"
+// compound-stmt = (declaration | stmt)* "}"
 fn compoundStmt(tokens: []Token, ti: *usize) *Node {
     var head = Node.init(.NdNum, getOrLast(tokens, ti));
     var cur: *Node = &head;
@@ -238,7 +240,11 @@ fn compoundStmt(tokens: []Token, ti: *usize) *Node {
             end = true;
             break;
         }
-        cur.*.next = stmt(tokens, ti);
+        if (streq(tokens[ti.*].val, "int")) {
+            cur.*.next = declaration(tokens, ti);
+        } else {
+            cur.*.next = stmt(tokens, ti);
+        }
         cur = cur.*.next.?;
         addType(cur);
     }
@@ -256,6 +262,64 @@ fn exprStmt(tokens: []Token, ti: *usize) *Node {
     const node = newUnary(.NdExprStmt, expr(tokens, ti), getOrLast(tokens, ti));
     skip(tokens, ti, ";");
     return node;
+}
+
+// declaration = declspec (declarator ("=" expr)? ("," declarator ("=" expr)?)*)? ";"
+fn declaration(tokens: []Token, ti: *usize) *Node {
+    if (tokens.len <= ti.*) {
+        errorAt(tokens.len - 1, "Unexpected EOF");
+    }
+    var token = &tokens[ti.*];
+    const baseTy = declspec(tokens, ti);
+
+    var head = Node.init(.NdNum, token);
+    var cur = &head;
+    var i: usize = ti.*;
+
+    while (ti.* < tokens.len and !consumeTokVal(tokens, ti, ";")) {
+        if (i != ti.*)
+            skip(tokens, ti, ",");
+
+        var ty = declarator(tokens, ti, baseTy);
+        var variable = newLVar(ty.*.name.?.*.val, ty) catch @panic("cannot allocate lvar");
+
+        if (!consumeTokVal(tokens, ti, "="))
+            continue;
+
+        var lhs = newVarNode(variable, ty.*.name.?);
+
+        var rhs = assign(tokens, ti);
+        token = &tokens[ti.*];
+        var node = newBinary(.NdAssign, lhs, rhs, token);
+        cur.*.next = newUnary(.NdExprStmt, node, token);
+        cur = cur.*.next.?;
+    }
+
+    var node = Node.allocInit(.NdBlock, token);
+    node.*.body = head.next;
+
+    return node;
+}
+
+// declarator = "*"* ident
+fn declarator(tokens: []Token, ti: *usize, typ: *Type) *Type {
+    var ty = typ;
+    while (consumeTokVal(tokens, ti, "*"))
+        ty = Type.pointerTo(ty);
+
+    var tok = &tokens[ti.*];
+    if (tok.*.kind != .TkIdent)
+        errorAt(tok.*.loc, "expected a variable name");
+
+    ty.*.name = tok;
+    ti.* += 1;
+    return ty;
+}
+
+// declspec = "int"
+fn declspec(tokens: []Token, ti: *usize) *Type {
+    skip(tokens, ti, "int");
+    return Type.allocInit(.TyInt);
 }
 
 // expr = assign
@@ -379,7 +443,7 @@ pub fn primary(tokens: []Token, ti: *usize) *Node {
     if (token.kind == TokenKind.TkIdent) {
         var v = findVar(token);
         if (v == null) {
-            v = try newLVar(token.val);
+            errorAt(token.loc, "変数が未定義です");
         }
         ti.* += 1;
         return newVarNode(v.?, getOrLast(tokens, ti));

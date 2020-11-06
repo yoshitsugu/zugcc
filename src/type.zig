@@ -1,6 +1,7 @@
 const std = @import("std");
 const allocPrint0 = std.fmt.allocPrint0;
 const Node = @import("parse.zig").Node;
+const Token = @import("tokenize.zig").Token;
 const globals = @import("globals.zig");
 
 pub const TypeKind = enum {
@@ -10,7 +11,9 @@ pub const TypeKind = enum {
 
 pub const Type = struct {
     kind: TypeKind,
-    base: ?*Type,
+
+    base: ?*Type, // ポインタの場合に使う
+    name: ?*Token, // 宣言のときに使う
 
     pub var INT_SIZE_STR: [:0]u8 = undefined;
 
@@ -22,6 +25,7 @@ pub const Type = struct {
         return Type{
             .kind = kind,
             .base = null,
+            .name = null,
         };
     }
 
