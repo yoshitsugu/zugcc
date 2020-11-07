@@ -103,23 +103,25 @@ pub const Obj = struct {
 pub const Func = struct {
     next: ?*Func,
     name: [:0]u8,
+    params: ArrayList(*Obj),
     body: *Node, // 関数の開始ノード
     locals: ArrayList(*Obj),
     stack_size: i32,
 
-    pub fn init(name: [:0]u8, body: *Node) Func {
+    pub fn init(name: [:0]u8, params: ArrayList(*Obj), body: *Node) Func {
         return Func{
             .next = null,
             .name = name,
+            .params = params,
             .body = body,
             .locals = ArrayList(*Obj).init(globals.allocator),
             .stack_size = 0,
         };
     }
 
-    pub fn allocInit(name: [:0]u8, body: *Node) *Func {
+    pub fn allocInit(name: [:0]u8, params: ArrayList(*Obj), body: *Node) *Func {
         var f = globals.allocator.create(Func) catch @panic("cannot allocate Func");
-        f.* = Func.init(name, body);
+        f.* = Func.init(name, params, body);
         return f;
     }
 };
@@ -155,8 +157,9 @@ fn newBlockNode(n: ?*Node, tok: *Token) *Node {
     return node;
 }
 
+// 引数のリストを一時的に保有するためのグローバル変数
+var fn_args: ArrayList(*Obj) = undefined;
 // ローカル変数のリストを一時的に保有するためのグローバル変数
-// 最終的にFuncに代入して使う
 var locals: ArrayList(*Obj) = undefined;
 
 fn newLVar(name: [:0]u8, ty: *Type) !*Obj {
@@ -189,7 +192,7 @@ fn getOrLast(tokens: []Token, ti: *usize) *Token {
 // program = function-definition*
 pub fn parse(tokens: []Token, ti: *usize) !*Func {
     Type.initGlobals();
-    var head = Func.init(allocPrint0(globals.allocator, "head", .{}) catch "", undefined);
+    var head = Func.init(allocPrint0(globals.allocator, "head", .{}) catch "", undefined, undefined);
     var cur = &head;
     while (ti.* < tokens.len) {
         cur.*.next = function(tokens, ti);
@@ -200,13 +203,20 @@ pub fn parse(tokens: []Token, ti: *usize) !*Func {
 
 // function declspec declarator ident { compond_stmt }
 fn function(tokens: []Token, ti: *usize) *Func {
+    locals = ArrayList(*Obj).init(globals.allocator);
     var ty = declspec(tokens, ti);
     ty = declarator(tokens, ti, ty);
 
-    locals = ArrayList(*Obj).init(globals.allocator);
+    createParamLvars(ty.*.params);
+    var params = ArrayList(*Obj).init(globals.allocator);
+    for (locals.items) |lc| {
+        params.append(lc) catch @panic("cannot append params");
+    }
+
     skip(tokens, ti, "{");
     var f = Func.allocInit(
         ty.*.name.?.*.val,
+        params,
         compoundStmt(tokens, ti),
     );
     f.locals = locals;
@@ -362,11 +372,25 @@ fn declspec(tokens: []Token, ti: *usize) *Type {
     return Type.allocInit(.TyInt);
 }
 
-// type-suffix = ("(" func-params)?
+// type-suffix = ("(" func-params? ")")?
+// func-params = param ("," param)*
+// param       = declspec declarator
 fn typeSuffix(tokens: []Token, ti: *usize, ty: *Type) *Type {
     if (consumeTokVal(tokens, ti, "(")) {
-        skip(tokens, ti, ")");
-        return Type.funcType(ty);
+        var head = Type.init(.TyInt);
+        var cur = &head;
+
+        while (!consumeTokVal(tokens, ti, ")")) {
+            if (cur != &head)
+                skip(tokens, ti, ",");
+            var basety = declspec(tokens, ti);
+            cur.*.next = declarator(tokens, ti, basety);
+            cur = cur.*.next.?;
+        }
+
+        var tp = Type.funcType(ty);
+        tp.*.params = head.next;
+        return tp;
     }
     return ty;
 }
@@ -613,4 +637,13 @@ fn newSub(lhs: *Node, rhs: *Node, tok: *Token) *Node {
     }
 
     errorAt(tok.loc, "Invalid operands");
+}
+
+fn createParamLvars(param: ?*Type) void {
+    if (param == null) {
+        return;
+    }
+    const prm = param.?;
+    createParamLvars(prm.*.next);
+    _ = newLVar(prm.*.name.?.*.val, prm) catch @panic("cannot allocate lvar");
 }

@@ -30,6 +30,13 @@ pub fn codegen(prog: *Func) !void {
         try print("  mov %rsp, %rbp\n", .{});
         try print("  sub ${}, %rsp\n", .{func.*.stack_size});
 
+        const fparams = func.params.items;
+        var i: usize = fparams.len;
+        while (i > 0) {
+            try print("  mov {}, {}(%rbp)\n", .{ ARGREGS[fparams.len - i], fparams[i - 1].*.offset });
+            i -= 1;
+        }
+
         try genStmt(func.*.body);
         assert(depth == 0);
 

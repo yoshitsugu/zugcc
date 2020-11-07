@@ -26,7 +26,5 @@ pub fn main() !void {
     const tokenized = try tokenize(arg);
     var ti: usize = 0;
     const function = try parse(tokenized.items, &ti);
-    //try print("++++ {} ++++\n", .{function.*.body.*});
-
     try codegen(function);
 }

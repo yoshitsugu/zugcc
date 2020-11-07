@@ -18,6 +18,8 @@ pub const Type = struct {
 
     // 関数
     return_ty: ?*Type,
+    params: ?*Type,
+    next: ?*Type,
 
     pub var INT_SIZE_STR: [:0]u8 = undefined;
 
@@ -31,6 +33,8 @@ pub const Type = struct {
             .base = null,
             .name = null,
             .return_ty = null,
+            .params = null,
+            .next = null,
         };
     }
 
@@ -76,13 +80,18 @@ pub fn addType(nodeWithNull: ?*Node) void {
         addType(n.?);
         n = n.?.*.next;
     }
+    n = node.*.args;
+    while (n != null) {
+        addType(n.?);
+        n = n.?.*.next;
+    }
 
     switch (node.*.kind) {
         .NdAdd, .NdSub, .NdMul, .NdDiv, .NdNeg, .NdAssign => {
             node.*.ty = node.*.lhs.?.*.ty;
             return;
         },
-        .NdEq, .NdNe, .NdLt, .NdLe, .NdVar, .NdNum => {
+        .NdEq, .NdNe, .NdLt, .NdLe, .NdVar, .NdNum, .NdFuncall => {
             node.*.ty = Type.allocInit(.TyInt);
             return;
         },
