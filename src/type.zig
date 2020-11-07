@@ -7,6 +7,7 @@ const globals = @import("globals.zig");
 pub const TypeKind = enum {
     TyInt,
     TyPtr,
+    TyFunc,
 };
 
 pub const Type = struct {
@@ -14,6 +15,9 @@ pub const Type = struct {
 
     base: ?*Type, // ポインタの場合に使う
     name: ?*Token, // 宣言のときに使う
+
+    // 関数
+    return_ty: ?*Type,
 
     pub var INT_SIZE_STR: [:0]u8 = undefined;
 
@@ -26,6 +30,7 @@ pub const Type = struct {
             .kind = kind,
             .base = null,
             .name = null,
+            .return_ty = null,
         };
     }
 
@@ -43,6 +48,12 @@ pub const Type = struct {
 
     pub fn isInteger(self: *Type) bool {
         return self.*.kind == .TyInt;
+    }
+
+    pub fn funcType(return_ty: *Type) *Type {
+        var ty = Type.allocInit(.TyFunc);
+        ty.return_ty = return_ty;
+        return ty;
     }
 };
 

@@ -101,9 +101,27 @@ pub const Obj = struct {
 
 // 関数
 pub const Func = struct {
+    next: ?*Func,
+    name: [:0]u8,
     body: *Node, // 関数の開始ノード
     locals: ArrayList(*Obj),
     stack_size: i32,
+
+    pub fn init(name: [:0]u8, body: *Node) Func {
+        return Func{
+            .next = null,
+            .name = name,
+            .body = body,
+            .locals = ArrayList(*Obj).init(globals.allocator),
+            .stack_size = 0,
+        };
+    }
+
+    pub fn allocInit(name: [:0]u8, body: *Node) *Func {
+        var f = globals.allocator.create(Func) catch @panic("cannot allocate Func");
+        f.* = Func.init(name, body);
+        return f;
+    }
 };
 
 pub fn newBinary(kind: NodeKind, lhs: *Node, rhs: *Node, tok: *Token) *Node {
@@ -168,17 +186,31 @@ fn getOrLast(tokens: []Token, ti: *usize) *Token {
     return &tokens[tokens.len - 1];
 }
 
-// program = stmt*
+// program = function-definition*
 pub fn parse(tokens: []Token, ti: *usize) !*Func {
     Type.initGlobals();
+    var head = Func.init(allocPrint0(globals.allocator, "head", .{}) catch "", undefined);
+    var cur = &head;
+    while (ti.* < tokens.len) {
+        cur.*.next = function(tokens, ti);
+        cur = cur.*.next.?;
+    }
+    return head.next.?;
+}
+
+// function declspec declarator ident { compond_stmt }
+fn function(tokens: []Token, ti: *usize) *Func {
+    var ty = declspec(tokens, ti);
+    ty = declarator(tokens, ti, ty);
+
     locals = ArrayList(*Obj).init(globals.allocator);
-    var func = try globals.allocator.create(Func);
-    func.* = Func{
-        .body = stmt(tokens, ti),
-        .locals = locals,
-        .stack_size = 0,
-    };
-    return func;
+    skip(tokens, ti, "{");
+    var f = Func.allocInit(
+        ty.*.name.?.*.val,
+        compoundStmt(tokens, ti),
+    );
+    f.locals = locals;
+    return f;
 }
 
 // stmt = "return" expr ";"
@@ -308,7 +340,7 @@ fn declaration(tokens: []Token, ti: *usize) *Node {
     return node;
 }
 
-// declarator = "*"* ident
+// declarator = "*"* ident type-suffix
 fn declarator(tokens: []Token, ti: *usize, typ: *Type) *Type {
     var ty = typ;
     while (consumeTokVal(tokens, ti, "*"))
@@ -318,8 +350,9 @@ fn declarator(tokens: []Token, ti: *usize, typ: *Type) *Type {
     if (tok.*.kind != .TkIdent)
         errorAt(tok.*.loc, "expected a variable name");
 
-    ty.*.name = tok;
     ti.* += 1;
+    ty = typeSuffix(tokens, ti, ty);
+    ty.*.name = tok;
     return ty;
 }
 
@@ -327,6 +360,15 @@ fn declarator(tokens: []Token, ti: *usize, typ: *Type) *Type {
 fn declspec(tokens: []Token, ti: *usize) *Type {
     skip(tokens, ti, "int");
     return Type.allocInit(.TyInt);
+}
+
+// type-suffix = ("(" func-params)?
+fn typeSuffix(tokens: []Token, ti: *usize, ty: *Type) *Type {
+    if (consumeTokVal(tokens, ti, "(")) {
+        skip(tokens, ti, ")");
+        return Type.funcType(ty);
+    }
+    return ty;
 }
 
 // expr = assign

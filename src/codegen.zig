@@ -13,25 +13,31 @@ const errorAt = err.errorAt;
 var depth: usize = 0;
 var count_i: usize = 0;
 var ARGREGS = [_][:0]const u8{ "%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9" };
+var current_fn: *Func = undefined;
 
-pub fn codegen(func: *Func) !void {
-    _ = assignLvarOffsets(func);
+pub fn codegen(prog: *Func) !void {
+    _ = assignLvarOffsets(prog);
+    var f: ?*Func = prog;
+    while (f != null) : (f = f.?.*.next) {
+        const func = f.?;
+        try print("  .globl {}\n", .{func.*.name});
+        try print("{}:\n", .{func.*.name});
 
-    try print("  .globl main\n", .{});
-    try print("main:\n", .{});
+        current_fn = func;
 
-    // Prologue
-    try print("  push %rbp\n", .{});
-    try print("  mov %rsp, %rbp\n", .{});
-    try print("  sub ${}, %rsp\n", .{func.*.stack_size});
+        // Prologue
+        try print("  push %rbp\n", .{});
+        try print("  mov %rsp, %rbp\n", .{});
+        try print("  sub ${}, %rsp\n", .{func.*.stack_size});
 
-    try genStmt(func.*.body);
-    assert(depth == 0);
+        try genStmt(func.*.body);
+        assert(depth == 0);
 
-    try print(".L.return:\n", .{});
-    try print("  mov %rbp, %rsp\n", .{});
-    try print("  pop %rbp\n", .{});
-    try print("  ret\n", .{});
+        try print(".L.return.{}:\n", .{func.*.name});
+        try print("  mov %rbp, %rsp\n", .{});
+        try print("  pop %rbp\n", .{});
+        try print("  ret\n", .{});
+    }
 }
 
 fn genStmt(node: *Node) anyerror!void {
@@ -75,7 +81,7 @@ fn genStmt(node: *Node) anyerror!void {
         },
         NodeKind.NdReturn => {
             try genExpr(node.*.lhs);
-            try print("  jmp .L.return\n", .{});
+            try print("  jmp .L.return.{}\n", .{current_fn.*.name});
         },
         NodeKind.NdExprStmt => {
             try genExpr(node.*.lhs);
@@ -198,22 +204,27 @@ fn genAddr(node: *Node) !void {
     }
 }
 
-fn assignLvarOffsets(func: *Func) void {
-    var offset: i32 = 0;
-    const ls = func.*.locals.items;
-    if (ls.len > 0) {
-        var li: usize = ls.len - 1;
-        while (true) {
-            offset += 8;
-            ls[li].offset = -offset;
-            if (li > 0) {
-                li -= 1;
-            } else {
-                break;
+fn assignLvarOffsets(prog: *Func) void {
+    var f: ?*Func = prog;
+    while (f != null) : (f = f.?.*.next) {
+        var func = f.?;
+        var offset: i32 = 0;
+
+        const ls = func.*.locals.items;
+        if (ls.len > 0) {
+            var li: usize = ls.len - 1;
+            while (true) {
+                offset += 8;
+                ls[li].offset = -offset;
+                if (li > 0) {
+                    li -= 1;
+                } else {
+                    break;
+                }
             }
         }
+        func.*.stack_size = alignTo(offset, 16);
     }
-    func.*.stack_size = alignTo(offset, 16);
 }
 
 // アライン処理。関数を呼び出す前にRBPを16アラインしないといけない。
