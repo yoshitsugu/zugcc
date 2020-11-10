@@ -5,7 +5,7 @@ const print = stdout.print;
 const parse = @import("parse.zig");
 const NodeKind = parse.NodeKind;
 const Node = parse.Node;
-const Func = parse.Func;
+const Obj = parse.Obj;
 const assert = @import("std").debug.assert;
 const err = @import("error.zig");
 const errorAt = err.errorAt;
@@ -16,14 +16,15 @@ const TypeKind = t.TypeKind;
 var depth: usize = 0;
 var count_i: usize = 0;
 var ARGREGS = [_][:0]const u8{ "%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9" };
-var current_fn: *Func = undefined;
+var current_fn: *Obj = undefined;
 
-pub fn codegen(prog: *Func) !void {
+pub fn codegen(prog: ArrayList(*Obj)) !void {
     _ = assignLvarOffsets(prog);
-    var f: ?*Func = prog;
-    while (f != null) : (f = f.?.*.next) {
-        const func = f.?;
+    for (prog.items) |func| {
+        if (!func.*.is_function)
+            continue;
         try print("  .globl {}\n", .{func.*.name});
+        try print("  .text\n", .{});
         try print("{}:\n", .{func.*.name});
 
         current_fn = func;
@@ -214,10 +215,10 @@ fn genAddr(node: *Node) !void {
     }
 }
 
-fn assignLvarOffsets(prog: *Func) void {
-    var f: ?*Func = prog;
-    while (f != null) : (f = f.?.*.next) {
-        var func = f.?;
+fn assignLvarOffsets(prog: ArrayList(*Obj)) void {
+    for (prog.items) |func| {
+        if (!func.*.is_function)
+            continue;
         var offset: i32 = 0;
 
         const ls = func.*.locals.items;

@@ -3,7 +3,8 @@ const ArrayList = std.ArrayList;
 const allocPrint0 = std.fmt.allocPrint0;
 const err = @import("error.zig");
 const errorAt = err.errorAt;
-const globals = @import("globals.zig");
+const allocator = @import("allocator.zig");
+const getAllocator = allocator.getAllocator;
 const stdout = std.io.getStdOut().outStream();
 const print = stdout.print;
 
@@ -25,11 +26,11 @@ pub const Token = struct {
 };
 
 pub fn newToken(kind: TokenKind, val: []const u8, loc: usize) !Token {
-    return Token{ .kind = kind, .val = try allocPrint0(globals.allocator, "{}", .{val}), .loc = loc };
+    return Token{ .kind = kind, .val = try allocPrint0(getAllocator(), "{}", .{val}), .loc = loc };
 }
 
 pub fn tokenize(str: [*:0]const u8) !ArrayList(Token) {
-    var tokens = ArrayList(Token).init(globals.allocator);
+    var tokens = ArrayList(Token).init(getAllocator());
     var i: usize = 0;
     while (str[i] != 0) {
         const c = str[i];
@@ -109,7 +110,7 @@ fn readIdent(str: [*:0]const u8, i: usize) usize {
 }
 
 fn isKeyword(str: [*:0]const u8, startIndex: usize, endIndex: usize) bool {
-    const pstr = allocPrint0(globals.allocator, "{}", .{str[startIndex..endIndex]}) catch "";
+    const pstr = allocPrint0(getAllocator(), "{}", .{str[startIndex..endIndex]}) catch "";
     for (KEYWORDS) |kwd| {
         if (streq(kwd, pstr)) {
             return true;
@@ -120,7 +121,7 @@ fn isKeyword(str: [*:0]const u8, startIndex: usize, endIndex: usize) bool {
 
 fn readPuncts(str: [*:0]const u8, i: usize) usize {
     for (PUNCT_STRS) |pstr| {
-        const cut_str = allocPrint0(globals.allocator, "{}", .{str[i .. i + pstr.len]}) catch "";
+        const cut_str = allocPrint0(getAllocator(), "{}", .{str[i .. i + pstr.len]}) catch "";
         if (streq(cut_str, pstr)) {
             return i + pstr.len;
         }

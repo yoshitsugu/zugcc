@@ -4,7 +4,8 @@ const stdout = std.io.getStdOut().outStream();
 const print = stdout.print;
 const Node = @import("parse.zig").Node;
 const Token = @import("tokenize.zig").Token;
-const globals = @import("globals.zig");
+const allocator = @import("allocator.zig");
+const getAllocator = allocator.getAllocator;
 const err = @import("error.zig");
 const errorAt = err.errorAt;
 
@@ -52,7 +53,7 @@ pub const Type = struct {
     }
 
     pub fn allocInit(kind: TypeKind) *Type {
-        var ty = globals.allocator.create(Type) catch @panic("cannot allocate Type");
+        var ty = getAllocator().create(Type) catch @panic("cannot allocate Type");
         ty.* = Type.init(kind);
         return ty;
     }
@@ -150,5 +151,5 @@ pub fn addType(nodeWithNull: ?*Node) void {
 }
 
 fn stringToSlice(s: [*:0]const u8) [:0]u8 {
-    return allocPrint0(globals.allocator, "{}", .{s}) catch @panic("cannot allocate string");
+    return allocPrint0(getAllocator(), "{}", .{s}) catch @panic("cannot allocate string");
 }

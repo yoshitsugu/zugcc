@@ -11,7 +11,8 @@ const Token = tokenize.Token;
 const TokenKind = tokenize.TokenKind;
 const atoi = tokenize.atoi;
 const streq = tokenize.streq;
-const globals = @import("globals.zig");
+const allocator = @import("allocator.zig");
+const getAllocator = allocator.getAllocator;
 const typezig = @import("type.zig");
 const TypeKind = typezig.TypeKind;
 const Type = typezig.Type;
@@ -87,42 +88,65 @@ pub const Node = struct {
     }
 
     pub fn allocInit(kind: NodeKind, tok: *Token) *Node {
-        var node = globals.allocator.create(Node) catch @panic("cannot allocate Node");
+        var node = getAllocator().create(Node) catch @panic("cannot allocate Node");
         node.* = Node.init(kind, tok);
         return node;
     }
 };
 
-// ローカル変数
+// 変数 or 関数
 pub const Obj = struct {
     name: [:0]u8,
     ty: ?*Type,
-    offset: i32, // RBPからのオフセット
-};
+    is_local: bool,
+    is_function: bool,
 
-// 関数
-pub const Func = struct {
-    next: ?*Func,
-    name: [:0]u8,
+    // ローカル変数のとき
+    offset: i32, // RBPからのオフセット
+
+    // 関数のとき
     params: ArrayList(*Obj),
     body: *Node, // 関数の開始ノード
     locals: ArrayList(*Obj),
     stack_size: i32,
 
-    pub fn init(name: [:0]u8, params: ArrayList(*Obj), body: *Node) Func {
-        return Func{
-            .next = null,
+    pub fn initVar(is_local: bool, name: [:0]u8, ty: *Type) Obj {
+        return Obj{
             .name = name,
-            .params = params,
-            .body = body,
-            .locals = ArrayList(*Obj).init(globals.allocator),
+            .ty = ty,
+            .is_local = is_local,
+            .is_function = false,
+            .offset = 0,
+            .params = undefined,
+            .body = undefined,
+            .locals = undefined,
             .stack_size = 0,
         };
     }
 
-    pub fn allocInit(name: [:0]u8, params: ArrayList(*Obj), body: *Node) *Func {
-        var f = globals.allocator.create(Func) catch @panic("cannot allocate Func");
-        f.* = Func.init(name, params, body);
+    pub fn allocVar(is_local: bool, name: [:0]u8, ty: *Type) *Obj {
+        var f = getAllocator().create(Obj) catch @panic("cannot allocate Var");
+        f.* = Obj.initVar(is_local, name, ty);
+        return f;
+    }
+
+    pub fn initFunc(name: [:0]u8, params: ArrayList(*Obj), body: *Node) Obj {
+        return Obj{
+            .name = name,
+            .is_local = true,
+            .is_fuction = true,
+            .kind = .ObjFunc,
+            .offset = null,
+            .params = params,
+            .body = body,
+            .locals = ArrayList(*Obj).init(getAllocator()),
+            .stack_size = 0,
+        };
+    }
+
+    pub fn allocFunc(name: [:0]u8, params: ArrayList(*Obj), body: *Node) *Obj {
+        var f = getAllocator().create(*Obj) catch @panic("cannot allocate Func");
+        f.* = Obj.initFunc(name, params, body);
         return f;
     }
 };
@@ -163,16 +187,19 @@ fn newBlockNode(n: ?*Node, tok: *Token) *Node {
 var fn_args: ArrayList(*Obj) = undefined;
 // ローカル変数のリストを一時的に保有するためのグローバル変数
 var locals: ArrayList(*Obj) = undefined;
+// グローバル変数のリストを一時的に保有するためのグローバル変数
+var globals: ArrayList(*Obj) = undefined;
 
-fn newLVar(name: [:0]u8, ty: *Type) !*Obj {
-    var lvar = globals.allocator.create(Obj) catch @panic("cannot allocate Obj");
-    lvar.* = Obj{
-        .name = name,
-        .ty = ty,
-        .offset = 0,
-    };
-    locals.append(lvar) catch @panic("ローカル変数のパースに失敗しました");
-    return lvar;
+fn newLvar(name: [:0]u8, ty: *Type) *Obj {
+    var v = Obj.allocVar(true, name, ty);
+    locals.append(v) catch @panic("ローカル変数のパースに失敗しました");
+    return v;
+}
+
+fn newGvar(name: [:0]u8, ty: *Type) *Obj {
+    var v = Obj.allocVar(false, name, ty);
+    globals.append(v) catch @panic("グローバル変数のパースに失敗しました");
+    return v;
 }
 
 fn findVar(token: Token) ?*Obj {
@@ -191,37 +218,35 @@ fn getOrLast(tokens: []Token, ti: *usize) *Token {
     return &tokens[tokens.len - 1];
 }
 
-// program = function-definition*
-pub fn parse(tokens: []Token, ti: *usize) !*Func {
+// program = (function-definition | global-variable)*
+pub fn parse(tokens: []Token, ti: *usize) !ArrayList(*Obj) {
     Type.initGlobals();
-    var head = Func.init(allocPrint0(globals.allocator, "head", .{}) catch "", undefined, undefined);
-    var cur = &head;
+    globals = ArrayList(*Obj).init(getAllocator());
+    var functions = ArrayList(*Obj).init(getAllocator());
     while (ti.* < tokens.len) {
-        cur.*.next = function(tokens, ti);
-        cur = cur.*.next.?;
+        const basety = declspec(tokens, ti);
+        try functions.append(function(tokens, ti, basety));
     }
-    return head.next.?;
+    return functions;
 }
 
-// function declspec declarator ident { compond_stmt }
-fn function(tokens: []Token, ti: *usize) *Func {
-    locals = ArrayList(*Obj).init(globals.allocator);
-    var ty = declspec(tokens, ti);
-    ty = declarator(tokens, ti, ty);
+// function = declarator ident { compond_stmt }
+fn function(tokens: []Token, ti: *usize, basety: *Type) *Obj {
+    locals = ArrayList(*Obj).init(getAllocator());
+    const ty = declarator(tokens, ti, basety);
 
     createParamLvars(ty.*.params);
-    var params = ArrayList(*Obj).init(globals.allocator);
+    var params = ArrayList(*Obj).init(getAllocator());
     for (locals.items) |lc| {
         params.append(lc) catch @panic("cannot append params");
     }
 
     skip(tokens, ti, "{");
-    var f = Func.allocInit(
-        ty.*.name.?.*.val,
-        params,
-        compoundStmt(tokens, ti),
-    );
-    f.locals = locals;
+    var f = newGvar(ty.*.name.?.*.val, ty);
+    f.*.is_function = true;
+    f.*.params = params;
+    f.*.body = compoundStmt(tokens, ti);
+    f.*.locals = locals;
     return f;
 }
 
@@ -332,7 +357,7 @@ fn declaration(tokens: []Token, ti: *usize) *Node {
             skip(tokens, ti, ",");
 
         var ty = declarator(tokens, ti, baseTy);
-        var variable = newLVar(ty.*.name.?.*.val, ty) catch @panic("cannot allocate lvar");
+        var variable = newLvar(ty.*.name.?.*.val, ty);
 
         if (!consumeTokVal(tokens, ti, "="))
             continue;
@@ -544,7 +569,7 @@ fn primary(tokens: []Token, ti: *usize) *Node {
         const tok = &tokens[ti.*];
         var node = unary(tokens, ti);
         addType(node);
-        const sizeStr = allocPrint0(globals.allocator, "{}", .{node.*.ty.?.*.size}) catch @panic("cannot allocate sizeof");
+        const sizeStr = allocPrint0(getAllocator(), "{}", .{node.*.ty.?.*.size}) catch @panic("cannot allocate sizeof");
         return newNum(sizeStr, tok);
     }
 
@@ -599,7 +624,7 @@ fn skip(tokens: []Token, ti: *usize, s: [:0]const u8) void {
     if (streq(token.val, s)) {
         ti.* += 1;
     } else {
-        const string = allocPrint0(globals.allocator, "期待した文字列 {} がありません", .{s}) catch "期待した文字列がありません";
+        const string = allocPrint0(getAllocator(), "期待した文字列 {} がありません", .{s}) catch "期待した文字列がありません";
         errorAt(token.loc, string);
     }
 }
@@ -649,7 +674,7 @@ fn newAdd(lhs: *Node, rhs: *Node, tok: *Token) *Node {
     }
 
     // ptr + num
-    const num = allocPrint0(globals.allocator, "{}", .{l.*.ty.?.*.base.?.*.size}) catch @panic("cannot allocate newNum");
+    const num = allocPrint0(getAllocator(), "{}", .{l.*.ty.?.*.base.?.*.size}) catch @panic("cannot allocate newNum");
     r = newBinary(.NdMul, r, newNum(num, tok), tok);
     addType(r);
     var n = newBinary(.NdAdd, l, r, tok);
@@ -669,13 +694,13 @@ fn newSub(lhs: *Node, rhs: *Node, tok: *Token) *Node {
     if (lhs.*.ty.?.*.base != null and rhs.*.ty.?.*.base != null) {
         const node = newBinary(.NdSub, lhs, rhs, tok);
         node.*.ty = Type.typeInt();
-        const num = allocPrint0(globals.allocator, "{}", .{lhs.*.ty.?.*.base.?.*.size}) catch @panic("cannot allocate newNum");
+        const num = allocPrint0(getAllocator(), "{}", .{lhs.*.ty.?.*.base.?.*.size}) catch @panic("cannot allocate newNum");
         return newBinary(.NdDiv, node, newNum(num, tok), tok);
     }
 
     // ptr - num
     if (lhs.*.ty.?.*.base != null and rhs.*.ty.?.*.base == null) {
-        const num = allocPrint0(globals.allocator, "{}", .{lhs.*.ty.?.*.base.?.*.size}) catch @panic("cannot allocate newNum");
+        const num = allocPrint0(getAllocator(), "{}", .{lhs.*.ty.?.*.base.?.*.size}) catch @panic("cannot allocate newNum");
         var r = newBinary(.NdMul, rhs, newNum(num, tok), tok);
         addType(r);
         var n = newBinary(.NdSub, lhs, r, tok);
@@ -692,5 +717,5 @@ fn createParamLvars(param: ?*Type) void {
     }
     const prm = param.?;
     createParamLvars(prm.*.next);
-    _ = newLVar(prm.*.name.?.*.val, prm) catch @panic("cannot allocate lvar");
+    _ = newLvar(prm.*.name.?.*.val, prm);
 }

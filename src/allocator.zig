@@ -6,3 +6,7 @@ pub var allocator: *Allocator = undefined;
 pub fn setAllocator(a: *Allocator) void {
     allocator = a;
 }
+
+pub fn getAllocator() *Allocator {
+    return allocator;
+}

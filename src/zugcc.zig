@@ -10,12 +10,12 @@ const setTargetString = err.setTargetString;
 const pr = @import("parse.zig");
 const parse = pr.parse;
 const codegen = @import("codegen.zig").codegen;
-const globals = @import("globals.zig");
+const allocator = @import("allocator.zig");
 
 pub fn main() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    globals.setAllocator(&arena.allocator);
+    allocator.setAllocator(&arena.allocator);
 
     if (std.os.argv.len != 2) {
         @panic("コンパイルしたい文字列を引数として渡してください");
@@ -25,6 +25,6 @@ pub fn main() !void {
     setTargetString(&arg);
     const tokenized = try tokenize(arg);
     var ti: usize = 0;
-    const function = try parse(tokenized.items, &ti);
-    try codegen(function);
+    const functions = try parse(tokenized.items, &ti);
+    try codegen(functions);
 }
