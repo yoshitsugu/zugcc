@@ -7,7 +7,7 @@ const globals = @import("globals.zig");
 const stdout = std.io.getStdOut().outStream();
 const print = stdout.print;
 
-const PUNCT_CHARS = "+-*/()<>;={}&,";
+const PUNCT_CHARS = "+-*/()<>;={}&,[]";
 const PUNCT_STRS = [_][:0]const u8{ "==", "!=", "<=", ">=" };
 const KEYWORDS = [_][:0]const u8{ "return", "if", "else", "for", "while" };
 
@@ -146,4 +146,30 @@ fn consumeNumber(ptr: [*:0]const u8, index: usize) usize {
 
 pub fn streq(a: [:0]const u8, b: [:0]const u8) bool {
     return std.mem.eql(u8, a, b);
+}
+
+pub fn atoi(s: [:0]u8) i32 {
+    var n: i32 = 0;
+    var neg = false;
+    var si: usize = 0;
+    if (s.len == 0)
+        return n;
+    while (si < s.len and isSpace(s[si]))
+        si += 1;
+    switch (s[si]) {
+        '-' => {
+            neg = true;
+            si += 1;
+        },
+        '+' => si += 1,
+        else => {},
+    }
+    while (si < s.len and isNumber(s[si])) : (si += 1) {
+        n = 10 * n - (@intCast(i32, s[si]) - '0');
+    }
+    if (neg) {
+        return n;
+    } else {
+        return (-1 * n);
+    }
 }

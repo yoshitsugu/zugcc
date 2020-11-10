@@ -9,6 +9,9 @@ const Func = parse.Func;
 const assert = @import("std").debug.assert;
 const err = @import("error.zig");
 const errorAt = err.errorAt;
+const t = @import("type.zig");
+const Type = t.Type;
+const TypeKind = t.TypeKind;
 
 var depth: usize = 0;
 var count_i: usize = 0;
@@ -116,12 +119,12 @@ fn genExpr(nodeWithNull: ?*Node) anyerror!void {
         },
         NodeKind.NdVar => {
             try genAddr(node);
-            try print("  mov (%rax), %rax\n", .{});
+            try load(node.*.ty.?);
             return;
         },
         NodeKind.NdDeref => {
             try genExpr(node.*.lhs);
-            try print("  mov (%rax), %rax\n", .{});
+            try load(node.*.ty.?);
             return;
         },
         NodeKind.NdAddr => {
@@ -221,7 +224,7 @@ fn assignLvarOffsets(prog: *Func) void {
         if (ls.len > 0) {
             var li: usize = ls.len - 1;
             while (true) {
-                offset += 8;
+                offset += @intCast(i32, ls[li].ty.?.*.size);
                 ls[li].offset = -offset;
                 if (li > 0) {
                     li -= 1;
@@ -242,4 +245,12 @@ fn alignTo(n: i32, a: i32) i32 {
 fn count() !usize {
     count_i += 1;
     return count_i;
+}
+
+fn load(ty: *Type) !void {
+    if (ty.*.kind == TypeKind.TyArray) {
+        return;
+    }
+
+    try print("  mov (%rax), %rax\n", .{});
 }

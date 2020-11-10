@@ -9,6 +9,7 @@ const errorAt = err.errorAt;
 const tokenize = @import("tokenize.zig");
 const Token = tokenize.Token;
 const TokenKind = tokenize.TokenKind;
+const atoi = tokenize.atoi;
 const streq = tokenize.streq;
 const globals = @import("globals.zig");
 const typezig = @import("type.zig");
@@ -148,6 +149,7 @@ fn newNum(val: [:0]u8, tok: *Token) *Node {
 fn newVarNode(v: *Obj, tok: *Token) *Node {
     var node = Node.allocInit(.NdVar, tok);
     node.*.variable = v;
+    node.*.ty = v.ty;
     return node;
 }
 
@@ -369,30 +371,41 @@ fn declarator(tokens: []Token, ti: *usize, typ: *Type) *Type {
 // declspec = "int"
 fn declspec(tokens: []Token, ti: *usize) *Type {
     skip(tokens, ti, "int");
-    return Type.allocInit(.TyInt);
+    return Type.typeInt();
 }
 
-// type-suffix = ("(" func-params? ")")?
-// func-params = param ("," param)*
-// param       = declspec declarator
+// type-suffix = "(" func-params
+//             | "[" num "]"
+//             | ε
 fn typeSuffix(tokens: []Token, ti: *usize, ty: *Type) *Type {
-    if (consumeTokVal(tokens, ti, "(")) {
-        var head = Type.init(.TyInt);
-        var cur = &head;
-
-        while (!consumeTokVal(tokens, ti, ")")) {
-            if (cur != &head)
-                skip(tokens, ti, ",");
-            var basety = declspec(tokens, ti);
-            cur.*.next = declarator(tokens, ti, basety);
-            cur = cur.*.next.?;
-        }
-
-        var tp = Type.funcType(ty);
-        tp.*.params = head.next;
-        return tp;
+    if (consumeTokVal(tokens, ti, "("))
+        return funcParams(tokens, ti, ty);
+    if (consumeTokVal(tokens, ti, "[")) {
+        var sz = getNumber(tokens, ti);
+        skip(tokens, ti, "]");
+        return Type.arrayOf(ty, @intCast(usize, sz));
     }
+
     return ty;
+}
+
+// func-params = (param ("," param)*)? ")"
+// param       = declspec declarator
+fn funcParams(tokens: []Token, ti: *usize, ty: *Type) *Type {
+    var head = Type.init(TypeKind.TyInt);
+    var cur = &head;
+
+    while (!consumeTokVal(tokens, ti, ")")) {
+        if (cur != &head)
+            skip(tokens, ti, ",");
+        var basety = declspec(tokens, ti);
+        cur.*.next = declarator(tokens, ti, basety);
+        cur = cur.*.next.?;
+    }
+
+    var tp = Type.funcType(ty);
+    tp.*.params = head.next;
+    return tp;
 }
 
 // expr = assign
@@ -569,6 +582,17 @@ fn skip(tokens: []Token, ti: *usize, s: [:0]const u8) void {
     }
 }
 
+fn getNumber(tokens: []Token, ti: *usize) i32 {
+    if (tokens.len <= ti.*) {
+        errorAt(ti.*, "数値ではありません");
+    }
+    const tok = tokens[ti.*];
+    if (tok.kind != TokenKind.TkNum)
+        errorAt(tok.loc, "数値ではありません");
+    ti.* += 1;
+    return atoi(tok.val);
+}
+
 fn consumeTokVal(tokens: []Token, ti: *usize, s: [:0]const u8) bool {
     if (tokens.len <= ti.*) {
         return false;
@@ -603,8 +627,8 @@ fn newAdd(lhs: *Node, rhs: *Node, tok: *Token) *Node {
     }
 
     // ptr + num
-    // とりあえず8固定
-    r = newBinary(.NdMul, r, newNum(Type.INT_SIZE_STR, tok), tok);
+    const num = allocPrint0(globals.allocator, "{}", .{l.*.ty.?.*.base.?.*.size}) catch @panic("cannot allocate newNum");
+    r = newBinary(.NdMul, r, newNum(num, tok), tok);
     addType(r);
     var n = newBinary(.NdAdd, l, r, tok);
     addType(n);
@@ -622,14 +646,15 @@ fn newSub(lhs: *Node, rhs: *Node, tok: *Token) *Node {
     // ptr - ptr はポインタ間にいくつ要素(ポインタの指す型)があるかを返す
     if (lhs.*.ty.?.*.base != null and rhs.*.ty.?.*.base != null) {
         const node = newBinary(.NdSub, lhs, rhs, tok);
-        node.*.ty = Type.allocInit(TypeKind.TyInt);
-        return newBinary(.NdDiv, node, newNum(Type.INT_SIZE_STR, tok), tok);
+        node.*.ty = Type.typeInt();
+        const num = allocPrint0(globals.allocator, "{}", .{lhs.*.ty.?.*.base.?.*.size}) catch @panic("cannot allocate newNum");
+        return newBinary(.NdDiv, node, newNum(num, tok), tok);
     }
 
     // ptr - num
-    // とりあえず8固定
     if (lhs.*.ty.?.*.base != null and rhs.*.ty.?.*.base == null) {
-        var r = newBinary(.NdMul, rhs, newNum(Type.INT_SIZE_STR, tok), tok);
+        const num = allocPrint0(globals.allocator, "{}", .{lhs.*.ty.?.*.base.?.*.size}) catch @panic("cannot allocate newNum");
+        var r = newBinary(.NdMul, rhs, newNum(num, tok), tok);
         addType(r);
         var n = newBinary(.NdSub, lhs, r, tok);
         n.*.ty = lhs.*.ty;
