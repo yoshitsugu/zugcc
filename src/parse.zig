@@ -375,7 +375,7 @@ fn declspec(tokens: []Token, ti: *usize) *Type {
 }
 
 // type-suffix = "(" func-params
-//             | "[" num "]"
+//             | "[" num "]" type-suffix
 //             | ε
 fn typeSuffix(tokens: []Token, ti: *usize, ty: *Type) *Type {
     if (consumeTokVal(tokens, ti, "("))
@@ -383,7 +383,7 @@ fn typeSuffix(tokens: []Token, ti: *usize, ty: *Type) *Type {
     if (consumeTokVal(tokens, ti, "[")) {
         var sz = getNumber(tokens, ti);
         skip(tokens, ti, "]");
-        return Type.arrayOf(ty, @intCast(usize, sz));
+        return Type.arrayOf(typeSuffix(tokens, ti, ty), @intCast(usize, sz));
     }
 
     return ty;
