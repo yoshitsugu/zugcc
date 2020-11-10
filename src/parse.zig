@@ -498,7 +498,7 @@ pub fn mul(tokens: []Token, ti: *usize) *Node {
 }
 
 // unary = ("+" | "-" | "*" | "&") unary
-//       | primary
+//       | postfix
 pub fn unary(tokens: []Token, ti: *usize) *Node {
     const token = tokens[ti.*];
     if (consumeTokVal(tokens, ti, "+")) {
@@ -513,11 +513,25 @@ pub fn unary(tokens: []Token, ti: *usize) *Node {
     if (consumeTokVal(tokens, ti, "*")) {
         return newUnary(.NdDeref, unary(tokens, ti), getOrLast(tokens, ti));
     }
-    return primary(tokens, ti);
+    return postfix(tokens, ti);
+}
+
+// postfix = primary ("[" expr "]")*
+fn postfix(tokens: []Token, ti: *usize) *Node {
+    var node = primary(tokens, ti);
+
+    while (consumeTokVal(tokens, ti, "[")) {
+        var start = &tokens[ti.* - 1];
+        var idx = expr(tokens, ti);
+        skip(tokens, ti, "]");
+        node = newUnary(.NdDeref, newAdd(node, idx, start), start);
+    }
+
+    return node;
 }
 
 // primary = "(" expr ")" | ident func-args? | num
-pub fn primary(tokens: []Token, ti: *usize) *Node {
+fn primary(tokens: []Token, ti: *usize) *Node {
     const token = tokens[ti.*];
     if (streq(token.val, "(")) {
         ti.* += 1;
