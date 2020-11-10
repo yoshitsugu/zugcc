@@ -530,7 +530,7 @@ fn postfix(tokens: []Token, ti: *usize) *Node {
     return node;
 }
 
-// primary = "(" expr ")" | ident func-args? | num
+// primary = "(" expr ")" | "sizeof" unary | ident func-args? | num
 fn primary(tokens: []Token, ti: *usize) *Node {
     const token = tokens[ti.*];
     if (streq(token.val, "(")) {
@@ -538,6 +538,14 @@ fn primary(tokens: []Token, ti: *usize) *Node {
         const node = expr(tokens, ti);
         skip(tokens, ti, ")");
         return node;
+    }
+
+    if (consumeTokVal(tokens, ti, "sizeof")) {
+        const tok = &tokens[ti.*];
+        var node = unary(tokens, ti);
+        addType(node);
+        const sizeStr = allocPrint0(globals.allocator, "{}", .{node.*.ty.?.*.size}) catch @panic("cannot allocate sizeof");
+        return newNum(sizeStr, tok);
     }
 
     if (token.kind == TokenKind.TkIdent) {
