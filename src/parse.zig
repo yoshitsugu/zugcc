@@ -104,6 +104,9 @@ pub const Obj = struct {
     // ローカル変数のとき
     offset: i32, // RBPからのオフセット
 
+    // グローバル変数のとき
+    init_data: [:0]u8,
+
     // 関数のとき
     params: ArrayList(*Obj),
     body: *Node, // 関数の開始ノード
@@ -117,6 +120,7 @@ pub const Obj = struct {
             .is_local = is_local,
             .is_function = false,
             .offset = 0,
+            .init_data = "",
             .params = undefined,
             .body = undefined,
             .locals = undefined,
@@ -181,6 +185,23 @@ fn newBlockNode(n: ?*Node, tok: *Token) *Node {
     var node = Node.allocInit(.NdBlock, tok);
     node.*.body = n;
     return node;
+}
+
+fn newStringLiteral(s: [:0]u8, ty: *Type) *Obj {
+    var gv = newAnonGvar(ty);
+    gv.init_data = s;
+    return gv;
+}
+
+fn newAnonGvar(ty: *Type) *Obj {
+    return newGvar(newUniqueName(), ty);
+}
+
+var unique_id: isize = -1;
+
+fn newUniqueName() [:0]u8 {
+    unique_id += 1;
+    return allocPrint0(getAllocator(), ".L..{}", .{unique_id}) catch @panic("cannot allocate unique name");
 }
 
 // 引数のリストを一時的に保有するためのグローバル変数
@@ -591,7 +612,7 @@ fn postfix(tokens: []Token, ti: *usize) *Node {
     return node;
 }
 
-// primary = "(" expr ")" | "sizeof" unary | ident func-args? | num
+// primary = "(" expr ")" | "sizeof" unary | ident func-args? | str | num
 fn primary(tokens: []Token, ti: *usize) *Node {
     const token = tokens[ti.*];
     if (streq(token.val, "(")) {
@@ -621,6 +642,12 @@ fn primary(tokens: []Token, ti: *usize) *Node {
         }
         ti.* += 1;
         return newVarNode(v.?, getOrLast(tokens, ti));
+    }
+
+    if (token.kind == TokenKind.TkStr) {
+        const tok = getOrLast(tokens, ti);
+        ti.* += 1;
+        return newVarNode(newStringLiteral(tok.*.val, tok.*.ty.?), tok);
     }
 
     if (token.kind == TokenKind.TkNum) {

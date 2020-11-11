@@ -33,7 +33,14 @@ fn emitData(prog: ArrayList(*Obj)) !void {
         try print("  .data\n", .{});
         try print("  .globl {}\n", .{v.*.name});
         try print("{}:\n", .{v.*.name});
-        try print("  .zero {}\n", .{v.*.ty.?.*.size});
+
+        if (v.*.init_data.len != 0) {
+            for (v.*.init_data) |c| {
+                try print("  .byte {}\n", .{c});
+            }
+        } else {
+            try print("  .zero {}\n", .{v.*.ty.?.*.size});
+        }
     }
 }
 

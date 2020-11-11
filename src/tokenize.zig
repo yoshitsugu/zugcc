@@ -7,6 +7,7 @@ const allocator = @import("allocator.zig");
 const getAllocator = allocator.getAllocator;
 const stdout = std.io.getStdOut().outStream();
 const print = stdout.print;
+const Type = @import("type.zig").Type;
 
 const PUNCT_CHARS = "+-*/()<>;={}&,[]";
 const PUNCT_STRS = [_][:0]const u8{ "==", "!=", "<=", ">=" };
@@ -16,6 +17,7 @@ pub const TokenKind = enum {
     TkIdent, // 識別子
     TkPunct, // 区切り記号
     TkKeyword, // キーワード
+    TkStr, // 文字列
     TkNum, // 数値
 };
 
@@ -23,10 +25,11 @@ pub const Token = struct {
     kind: TokenKind, // トークン種別
     val: [:0]u8, // トークン文字列
     loc: usize, // 元の文字列上の場所
+    ty: ?*Type, // 文字列のときに使う
 };
 
 pub fn newToken(kind: TokenKind, val: []const u8, loc: usize) !Token {
-    return Token{ .kind = kind, .val = try allocPrint0(getAllocator(), "{}", .{val}), .loc = loc };
+    return Token{ .kind = kind, .val = try allocPrint0(getAllocator(), "{}", .{val}), .loc = loc, .ty = null };
 }
 
 pub fn tokenize(str: [*:0]const u8) !ArrayList(Token) {
@@ -43,6 +46,15 @@ pub fn tokenize(str: [*:0]const u8) !ArrayList(Token) {
             i = expectNumber(str, i);
             const num = try newToken(.TkNum, str[h..i], i);
             try tokens.append(num);
+            continue;
+        }
+        if (c == '"') {
+            const h = i;
+            i = readStringLiteral(str, h + 1);
+            var tok = try newToken(.TkStr, str[(h + 1)..(i - 1)], i);
+            // 文字列は終端文字の都合上、長さが +1 になる
+            tok.ty = Type.arrayOf(Type.typeChar(), (i - 1) - (h + 1) + 1);
+            try tokens.append(tok);
             continue;
         }
         if (isIdentHead(c)) {
@@ -173,4 +185,16 @@ pub fn atoi(s: [:0]u8) i32 {
     } else {
         return (-1 * n);
     }
+}
+
+fn readStringLiteral(str: [*:0]const u8, index: usize) usize {
+    var h = index;
+    var c = str[h];
+    while (c != '"') {
+        if (c == '\n' or c == 0)
+            errorAt(index, "文字列リテラルが閉じられていません");
+        h += 1;
+        c = str[h];
+    }
+    return h + 1;
 }
