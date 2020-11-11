@@ -208,6 +208,11 @@ fn findVar(token: Token) ?*Obj {
             return lv;
         }
     }
+    for (globals.items) |gv| {
+        if (streq(gv.*.name, token.val)) {
+            return gv;
+        }
+    }
     return null;
 }
 
@@ -222,12 +227,26 @@ fn getOrLast(tokens: []Token, ti: *usize) *Token {
 pub fn parse(tokens: []Token, ti: *usize) !ArrayList(*Obj) {
     Type.initGlobals();
     globals = ArrayList(*Obj).init(getAllocator());
-    var functions = ArrayList(*Obj).init(getAllocator());
     while (ti.* < tokens.len) {
         const basety = declspec(tokens, ti);
-        try functions.append(function(tokens, ti, basety));
+        if (isFunction(tokens, ti)) {
+            _ = function(tokens, ti, basety);
+        } else {
+            globalVariable(tokens, ti, basety);
+        }
     }
-    return functions;
+    return globals;
+}
+
+fn isFunction(tokens: []Token, ti: *usize) bool {
+    const tok = &tokens[ti.*];
+    const original_ti = ti.*;
+    if (streq(tok.*.val, ";"))
+        return false;
+
+    const ty = declarator(tokens, ti, Type.typeInt());
+    ti.* = original_ti;
+    return ty.*.kind == TypeKind.TyFunc;
 }
 
 // function = declarator ident { compond_stmt }
@@ -248,6 +267,19 @@ fn function(tokens: []Token, ti: *usize, basety: *Type) *Obj {
     f.*.body = compoundStmt(tokens, ti);
     f.*.locals = locals;
     return f;
+}
+
+fn globalVariable(tokens: []Token, ti: *usize, basety: *Type) void {
+    var first = true;
+
+    while (!consumeTokVal(tokens, ti, ";")) {
+        if (!first)
+            skip(tokens, ti, ",");
+        first = false;
+
+        const ty = declarator(tokens, ti, basety);
+        _ = newGvar(ty.*.name.?.*.val, ty);
+    }
 }
 
 // stmt = "return" expr ";"

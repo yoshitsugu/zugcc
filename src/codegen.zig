@@ -20,6 +20,23 @@ var current_fn: *Obj = undefined;
 
 pub fn codegen(prog: ArrayList(*Obj)) !void {
     _ = assignLvarOffsets(prog);
+    try emitData(prog);
+    try emitText(prog);
+}
+
+fn emitData(prog: ArrayList(*Obj)) !void {
+    for (prog.items) |v| {
+        if (v.*.is_function)
+            continue;
+
+        try print("  .data\n", .{});
+        try print("  .globl {}\n", .{v.*.name});
+        try print("{}:\n", .{v.*.name});
+        try print("  .zero {}\n", .{v.*.ty.?.*.size});
+    }
+}
+
+fn emitText(prog: ArrayList(*Obj)) !void {
     for (prog.items) |func| {
         if (!func.*.is_function)
             continue;
@@ -204,7 +221,11 @@ fn pop(arg: [:0]const u8) !void {
 fn genAddr(node: *Node) !void {
     switch (node.*.kind) {
         NodeKind.NdVar => {
-            try print("  lea {}(%rbp), %rax\n", .{node.*.variable.?.*.offset});
+            if (node.*.variable.?.*.is_local) {
+                try print("  lea {}(%rbp), %rax\n", .{node.*.variable.?.*.offset});
+            } else {
+                try print("  lea {}(%rip), %rax\n", .{node.*.variable.?.*.name});
+            }
             return;
         },
         NodeKind.NdDeref => {
