@@ -15,7 +15,8 @@ const TypeKind = t.TypeKind;
 
 var depth: usize = 0;
 var count_i: usize = 0;
-var ARGREGS = [_][:0]const u8{ "%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9" };
+var ARGREG8 = [_][:0]const u8{ "%dil", "%sil", "%dl", "%cl", "%r8b", "%r9b" };
+var ARGREG64 = [_][:0]const u8{ "%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9" };
 var current_fn: *Obj = undefined;
 
 pub fn codegen(prog: ArrayList(*Obj)) !void {
@@ -54,7 +55,12 @@ fn emitText(prog: ArrayList(*Obj)) !void {
         const fparams = func.params.items;
         var i: usize = fparams.len;
         while (i > 0) {
-            try print("  mov {}, {}(%rbp)\n", .{ ARGREGS[fparams.len - i], fparams[i - 1].*.offset });
+            const fparam = fparams[i - 1];
+            if (fparam.*.ty.?.*.size == 1) {
+                try print("  mov {}, {}(%rbp)\n", .{ ARGREG8[fparams.len - i], fparam.*.offset });
+            } else {
+                try print("  mov {}, {}(%rbp)\n", .{ ARGREG64[fparams.len - i], fparam.*.offset });
+            }
             i -= 1;
         }
 
@@ -153,8 +159,7 @@ fn genExpr(nodeWithNull: ?*Node) anyerror!void {
             try genAddr(node.*.lhs.?);
             try push();
             try genExpr(node.*.rhs.?);
-            try pop("%rdi");
-            try print("  mov %rax, (%rdi)\n", .{});
+            try store(node.*.ty.?);
             return;
         },
         NodeKind.NdFuncall => {
@@ -167,7 +172,7 @@ fn genExpr(nodeWithNull: ?*Node) anyerror!void {
                 arg = arg.?.*.next;
             }
             while (nargs > 0) {
-                try pop(ARGREGS[nargs - 1]);
+                try pop(ARGREG64[nargs - 1]);
                 nargs -= 1;
             }
             try print("  mov $0, %rax\n", .{});
@@ -274,5 +279,19 @@ fn load(ty: *Type) !void {
         return;
     }
 
-    try print("  mov (%rax), %rax\n", .{});
+    if (ty.*.size == 1) {
+        try print("  movsbq (%rax), %rax\n", .{});
+    } else {
+        try print("  mov (%rax), %rax\n", .{});
+    }
+}
+
+fn store(ty: *Type) !void {
+    try pop("%rdi");
+
+    if (ty.*.size == 1) {
+        try print("  mov %al, (%rdi)\n", .{});
+    } else {
+        try print("  mov %rax, (%rdi)\n", .{});
+    }
 }

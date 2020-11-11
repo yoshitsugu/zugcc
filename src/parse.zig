@@ -249,7 +249,7 @@ fn isFunction(tokens: []Token, ti: *usize) bool {
     return ty.*.kind == TypeKind.TyFunc;
 }
 
-// function = declarator ident { compond_stmt }
+// function = declarator ident { compound_stmt }
 fn function(tokens: []Token, ti: *usize, basety: *Type) *Obj {
     locals = ArrayList(*Obj).init(getAllocator());
     const ty = declarator(tokens, ti, basety);
@@ -348,7 +348,7 @@ fn compoundStmt(tokens: []Token, ti: *usize) *Node {
             end = true;
             break;
         }
-        if (streq(tokens[ti.*].val, "int")) {
+        if (isTypeName(tokens, ti)) {
             cur.*.next = declaration(tokens, ti);
         } else {
             cur.*.next = stmt(tokens, ti);
@@ -425,8 +425,12 @@ fn declarator(tokens: []Token, ti: *usize, typ: *Type) *Type {
     return ty;
 }
 
-// declspec = "int"
+// declspec = "char" | "int"
 fn declspec(tokens: []Token, ti: *usize) *Type {
+    if (consumeTokVal(tokens, ti, "char")) {
+        return Type.typeChar();
+    }
+
     skip(tokens, ti, "int");
     return Type.typeInt();
 }
@@ -750,4 +754,12 @@ fn createParamLvars(param: ?*Type) void {
     const prm = param.?;
     createParamLvars(prm.*.next);
     _ = newLvar(prm.*.name.?.*.val, prm);
+}
+
+fn isTypeName(tokens: []Token, ti: *usize) bool {
+    if (tokens.len <= ti.*) {
+        errorAt(ti.*, "Unexpected EOF");
+    }
+    const tok = tokens[ti.*];
+    return streq(tok.val, "int") or streq(tok.val, "char");
 }

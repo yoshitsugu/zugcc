@@ -10,6 +10,7 @@ const err = @import("error.zig");
 const errorAt = err.errorAt;
 
 pub const TypeKind = enum {
+    TyChar,
     TyInt,
     TyPtr,
     TyFunc,
@@ -64,6 +65,12 @@ pub const Type = struct {
         return ty;
     }
 
+    pub fn typeChar() *Type {
+        var ty = Type.allocInit(.TyChar);
+        ty.*.size = 1;
+        return ty;
+    }
+
     pub fn pointerTo(base: *Type) *Type {
         var ty = Type.allocInit(.TyPtr);
         ty.*.base = base;
@@ -72,7 +79,7 @@ pub const Type = struct {
     }
 
     pub fn isInteger(self: *Type) bool {
-        return self.*.kind == .TyInt;
+        return self.*.kind == .TyInt or self.*.kind == .TyChar;
     }
 
     pub fn funcType(return_ty: *Type) *Type {
