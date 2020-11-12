@@ -49,12 +49,8 @@ pub fn tokenize(str: [*:0]const u8) !ArrayList(Token) {
             continue;
         }
         if (c == '"') {
-            const h = i;
-            i = readStringLiteral(str, h + 1);
-            var tok = try newToken(.TkStr, str[(h + 1)..(i - 1)], i);
-            // 文字列は終端文字の都合上、長さが +1 になる
-            tok.ty = Type.arrayOf(Type.typeChar(), (i - 1) - (h + 1) + 1);
-            try tokens.append(tok);
+            const tok = try readStringLiteral(tokens, str, &i);
+            try tokens.append(tok.*);
             continue;
         }
         if (isIdentHead(c)) {
@@ -187,14 +183,57 @@ pub fn atoi(s: [:0]u8) i32 {
     }
 }
 
-fn readStringLiteral(str: [*:0]const u8, index: usize) usize {
+fn stringLiteralEnd(str: [*:0]const u8, index: usize) usize {
     var h = index;
     var c = str[h];
-    while (c != '"') {
+    while (c != '"') : (c = str[h]) {
+        const cs = [_:0]u8{c};
         if (c == '\n' or c == 0)
             errorAt(index, "文字列リテラルが閉じられていません");
-        h += 1;
-        c = str[h];
+        if (c == '\\') {
+            h += 2;
+        } else {
+            h += 1;
+        }
     }
-    return h + 1;
+    return h;
+}
+
+fn readStringLiteral(tokens: ArrayList(Token), str: [*:0]const u8, index: *usize) !*Token {
+    const start = index.*;
+    const end = stringLiteralEnd(str, start + 1);
+    var buf: []u8 = try getAllocator().alloc(u8, end - start);
+    var len: usize = 0;
+    var i = start + 1;
+    while (i < end) {
+        if (str[i] == '\\') {
+            buf[len] = readEscapedChar(str, i + 1);
+            i += 2;
+        } else {
+            buf[len] = str[i];
+            i += 1;
+        }
+        len += 1;
+    }
+    index.* = end + 1;
+    const tokenVal = try allocPrint0(getAllocator(), "{}", .{buf[0..len]});
+    var tok = try getAllocator().create(Token);
+    tok.* = try newToken(.TkStr, tokenVal, i);
+    // 文字列は終端文字の都合上、長さが +1 になる
+    tok.*.ty = Type.arrayOf(Type.typeChar(), len + 1);
+    return tok;
+}
+
+fn readEscapedChar(str: [*:0]const u8, index: usize) u8 {
+    return switch (str[index]) {
+        'a' => '\x07',
+        'b' => '\x08',
+        't' => '\t',
+        'n' => '\n',
+        'v' => 11,
+        'f' => 12,
+        'r' => 13,
+        'e' => 27,
+        else => str[index],
+    };
 }
