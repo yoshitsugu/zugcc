@@ -151,6 +151,18 @@ pub fn addType(nodeWithNull: ?*Node) void {
             node.*.ty = node.*.lhs.?.*.ty.?.*.base;
             return;
         },
+        .NdStmtExpr => {
+            if (node.*.body != null) {
+                var stmt = node.*.body.?;
+                while (stmt.*.next != null)
+                    stmt = stmt.*.next.?;
+                if (stmt.*.kind == .NdExprStmt) {
+                    node.*.ty = stmt.*.lhs.?.*.ty.?;
+                    return;
+                }
+            }
+            errorAt(node.*.tok.*.loc, "statement expression returning void is not supported");
+        },
         else => {
             return;
         },

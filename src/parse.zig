@@ -37,6 +37,7 @@ pub const NodeKind = enum {
     NdFor, // "for" or "while"
     NdFuncall, // 関数呼出
     NdExprStmt, // expression statement
+    NdStmtExpr, // statement expression
     NdVar, // 変数
     NdNum, // 数値
 };
@@ -612,9 +613,22 @@ fn postfix(tokens: []Token, ti: *usize) *Node {
     return node;
 }
 
-// primary = "(" expr ")" | "sizeof" unary | ident func-args? | str | num
+// primary = "(" "{" stmt+ "}" ")"
+//         | "(" expr ")"
+//         | "sizeof" unary
+//         | ident func-args?
+//         | str
+//         | num
 fn primary(tokens: []Token, ti: *usize) *Node {
     const token = tokens[ti.*];
+    if (streq(token.val, "(") and ti.* + 1 < tokens.len and streq(tokens[ti.* + 1].val, "{")) {
+        // This is a GNU statement expression
+        var node = Node.allocInit(.NdStmtExpr, &tokens[ti.*]);
+        ti.* += 2;
+        node.*.body = compoundStmt(tokens, ti).*.body;
+        skip(tokens, ti, ")");
+        return node;
+    }
     if (streq(token.val, "(")) {
         ti.* += 1;
         const node = expr(tokens, ti);

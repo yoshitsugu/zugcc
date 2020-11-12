@@ -169,6 +169,13 @@ fn genExpr(nodeWithNull: ?*Node) anyerror!void {
             try store(node.*.ty.?);
             return;
         },
+        NodeKind.NdStmtExpr => {
+            var n = node.*.body;
+            while (n != null) : (n = n.?.*.next) {
+                try genStmt(n.?);
+            }
+            return;
+        },
         NodeKind.NdFuncall => {
             var arg: ?*Node = node.*.args;
             var nargs: usize = 0;
