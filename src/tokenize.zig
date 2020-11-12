@@ -242,7 +242,8 @@ fn readEscapedChar(str: [*:0]const u8, index: *usize) u8 {
         index.* = j;
         return c;
     }
-    index.* = j + 1;
+
+    index.* += 1;
     return switch (c) {
         'a' => '\x07',
         'b' => '\x08',
@@ -252,6 +253,33 @@ fn readEscapedChar(str: [*:0]const u8, index: *usize) u8 {
         'f' => 12,
         'r' => 13,
         'e' => 27,
+        'x' => readHex(str, index),
         else => c,
     };
+}
+
+fn readHex(str: [*:0]const u8, index: *usize) u8 {
+    if (!isXdigit(str[index.*]))
+        errorAt(index.*, "16進数ではありません");
+
+    var j = index.*;
+    var c: u8 = 0;
+    while (isXdigit(str[j])) : (j += 1) {
+        c = (c << 4) + fromHex(str[j]);
+    }
+    index.* = j + 1;
+    return c;
+}
+
+fn fromHex(c: u8) u8 {
+    if ('0' <= c and c <= '9') {
+        return c - '0';
+    } else if ('a' <= c and c <= 'f') {
+        return c - 'a' + 10;
+    }
+    return c - 'A' + 10;
+}
+
+fn isXdigit(c: u8) bool {
+    return ('0' <= c and c <= '9') or ('a' <= c and c <= 'f') or ('A' <= c and c <= 'F');
 }
