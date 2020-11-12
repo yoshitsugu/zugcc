@@ -207,8 +207,9 @@ fn readStringLiteral(tokens: ArrayList(Token), str: [*:0]const u8, index: *usize
     var i = start + 1;
     while (i < end) {
         if (str[i] == '\\') {
-            buf[len] = readEscapedChar(str, i + 1);
-            i += 2;
+            var j = i + 1;
+            buf[len] = readEscapedChar(str, &j);
+            i = j;
         } else {
             buf[len] = str[i];
             i += 1;
@@ -224,8 +225,25 @@ fn readStringLiteral(tokens: ArrayList(Token), str: [*:0]const u8, index: *usize
     return tok;
 }
 
-fn readEscapedChar(str: [*:0]const u8, index: usize) u8 {
-    return switch (str[index]) {
+fn readEscapedChar(str: [*:0]const u8, index: *usize) u8 {
+    var j = index.*;
+    var n: usize = 0;
+    var c = str[j];
+    while (n < 3 and '0' <= str[j] and str[j] <= '7') {
+        if (n == 0) {
+            c = str[j] - '0';
+        } else {
+            c = (c << 3) + (str[j] - '0');
+        }
+        j += 1;
+        n += 1;
+    }
+    if (n > 0) {
+        index.* = j;
+        return c;
+    }
+    index.* = j + 1;
+    return switch (c) {
         'a' => '\x07',
         'b' => '\x08',
         't' => '\t',
@@ -234,6 +252,6 @@ fn readEscapedChar(str: [*:0]const u8, index: usize) u8 {
         'f' => 12,
         'r' => 13,
         'e' => 27,
-        else => str[index],
+        else => c,
     };
 }
