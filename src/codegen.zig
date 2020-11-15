@@ -1,7 +1,7 @@
 const std = @import("std");
 const ArrayList = std.ArrayList;
 const stdout = std.io.getStdOut().outStream();
-const print = stdout.print;
+const allocPrint0 = std.fmt.allocPrint0;
 const parse = @import("parse.zig");
 const NodeKind = parse.NodeKind;
 const Node = parse.Node;
@@ -12,14 +12,18 @@ const errorAt = err.errorAt;
 const t = @import("type.zig");
 const Type = t.Type;
 const TypeKind = t.TypeKind;
+const allocator = @import("allocator.zig");
+const getAllocator = allocator.getAllocator;
 
 var depth: usize = 0;
 var count_i: usize = 0;
 var ARGREG8 = [_][:0]const u8{ "%dil", "%sil", "%dl", "%cl", "%r8b", "%r9b" };
 var ARGREG64 = [_][:0]const u8{ "%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9" };
 var current_fn: *Obj = undefined;
+var outStream: std.fs.File.OutStream = undefined;
 
-pub fn codegen(prog: ArrayList(*Obj)) !void {
+pub fn codegen(prog: ArrayList(*Obj), out: *std.fs.File) !void {
+    outStream = out.outStream();
     _ = assignLvarOffsets(prog);
     try emitData(prog);
     try emitText(prog);
@@ -30,16 +34,16 @@ fn emitData(prog: ArrayList(*Obj)) !void {
         if (v.*.is_function)
             continue;
 
-        try print("  .data\n", .{});
-        try print("  .globl {}\n", .{v.*.name});
-        try print("{}:\n", .{v.*.name});
+        try println("  .data", .{});
+        try println("  .globl {}", .{v.*.name});
+        try println("{}:", .{v.*.name});
 
         if (v.*.init_data.len != 0) {
             for (v.*.init_data) |c| {
-                try print("  .byte {}\n", .{c});
+                try println("  .byte {}", .{c});
             }
         } else {
-            try print("  .zero {}\n", .{v.*.ty.?.*.size});
+            try println("  .zero {}", .{v.*.ty.?.*.size});
         }
     }
 }
@@ -48,25 +52,25 @@ fn emitText(prog: ArrayList(*Obj)) !void {
     for (prog.items) |func| {
         if (!func.*.is_function)
             continue;
-        try print("  .globl {}\n", .{func.*.name});
-        try print("  .text\n", .{});
-        try print("{}:\n", .{func.*.name});
+        try println("  .globl {}", .{func.*.name});
+        try println("  .text", .{});
+        try println("{}:", .{func.*.name});
 
         current_fn = func;
 
         // Prologue
-        try print("  push %rbp\n", .{});
-        try print("  mov %rsp, %rbp\n", .{});
-        try print("  sub ${}, %rsp\n", .{func.*.stack_size});
+        try println("  push %rbp", .{});
+        try println("  mov %rsp, %rbp", .{});
+        try println("  sub ${}, %rsp", .{func.*.stack_size});
 
         const fparams = func.params.items;
         var i: usize = fparams.len;
         while (i > 0) {
             const fparam = fparams[i - 1];
             if (fparam.*.ty.?.*.size == 1) {
-                try print("  mov {}, {}(%rbp)\n", .{ ARGREG8[fparams.len - i], fparam.*.offset });
+                try println("  mov {}, {}(%rbp)", .{ ARGREG8[fparams.len - i], fparam.*.offset });
             } else {
-                try print("  mov {}, {}(%rbp)\n", .{ ARGREG64[fparams.len - i], fparam.*.offset });
+                try println("  mov {}, {}(%rbp)", .{ ARGREG64[fparams.len - i], fparam.*.offset });
             }
             i -= 1;
         }
@@ -74,10 +78,10 @@ fn emitText(prog: ArrayList(*Obj)) !void {
         try genStmt(func.*.body);
         assert(depth == 0);
 
-        try print(".L.return.{}:\n", .{func.*.name});
-        try print("  mov %rbp, %rsp\n", .{});
-        try print("  pop %rbp\n", .{});
-        try print("  ret\n", .{});
+        try println(".L.return.{}:", .{func.*.name});
+        try println("  mov %rbp, %rsp", .{});
+        try println("  pop %rbp", .{});
+        try println("  ret", .{});
     }
 }
 
@@ -86,31 +90,31 @@ fn genStmt(node: *Node) anyerror!void {
         NodeKind.NdIf => {
             const c = count();
             try genExpr(node.*.cond);
-            try print("  cmp $0, %rax\n", .{});
-            try print("  je .L.else.{}\n", .{c});
+            try println("  cmp $0, %rax", .{});
+            try println("  je .L.else.{}", .{c});
             try genStmt(node.*.then.?);
-            try print("  jmp .L.end.{}\n", .{c});
-            try print(".L.else.{}:\n", .{c});
+            try println("  jmp .L.end.{}", .{c});
+            try println(".L.else.{}:", .{c});
             if (node.*.els != null)
                 try genStmt(node.*.els.?);
-            try print(".L.end.{}:\n", .{c});
+            try println(".L.end.{}:", .{c});
             return;
         },
         NodeKind.NdFor => {
             const c = count();
             if (node.*.init != null)
                 try genStmt(node.*.init.?);
-            try print(".L.begin.{}:\n", .{c});
+            try println(".L.begin.{}:", .{c});
             if (node.*.cond != null) {
                 try genExpr(node.*.cond);
-                try print("  cmp $0, %rax\n", .{});
-                try print("  je .L.end.{}\n", .{c});
+                try println("  cmp $0, %rax", .{});
+                try println("  je .L.end.{}", .{c});
             }
             try genStmt(node.*.then.?);
             if (node.*.inc != null)
                 try genExpr(node.*.inc);
-            try print("  jmp .L.begin.{}\n", .{c});
-            try print(".L.end.{}:\n", .{c});
+            try println("  jmp .L.begin.{}", .{c});
+            try println(".L.end.{}:", .{c});
             return;
         },
         NodeKind.NdBlock => {
@@ -122,7 +126,7 @@ fn genStmt(node: *Node) anyerror!void {
         },
         NodeKind.NdReturn => {
             try genExpr(node.*.lhs);
-            try print("  jmp .L.return.{}\n", .{current_fn.*.name});
+            try println("  jmp .L.return.{}", .{current_fn.*.name});
         },
         NodeKind.NdExprStmt => {
             try genExpr(node.*.lhs);
@@ -140,12 +144,12 @@ fn genExpr(nodeWithNull: ?*Node) anyerror!void {
     const node: *Node = nodeWithNull.?;
     switch (node.*.kind) {
         NodeKind.NdNum => {
-            try print("  mov ${}, %rax\n", .{node.*.val});
+            try println("  mov ${}, %rax", .{node.*.val});
             return;
         },
         NodeKind.NdNeg => {
             try genExpr(node.*.lhs);
-            try print("  neg %rax\n", .{});
+            try println("  neg %rax", .{});
             return;
         },
         NodeKind.NdVar => {
@@ -189,8 +193,8 @@ fn genExpr(nodeWithNull: ?*Node) anyerror!void {
                 try pop(ARGREG64[nargs - 1]);
                 nargs -= 1;
             }
-            try print("  mov $0, %rax\n", .{});
-            try print("  call {}\n", .{node.*.funcname});
+            try println("  mov $0, %rax", .{});
+            try println("  call {}", .{node.*.funcname});
             return;
         },
         else => {},
@@ -202,38 +206,38 @@ fn genExpr(nodeWithNull: ?*Node) anyerror!void {
     try pop("%rdi");
 
     switch (node.*.kind) {
-        NodeKind.NdAdd => try print("  add %rdi, %rax\n", .{}),
-        NodeKind.NdSub => try print("  sub %rdi, %rax\n", .{}),
-        NodeKind.NdMul => try print("  imul %rdi, %rax\n", .{}),
+        NodeKind.NdAdd => try println("  add %rdi, %rax", .{}),
+        NodeKind.NdSub => try println("  sub %rdi, %rax", .{}),
+        NodeKind.NdMul => try println("  imul %rdi, %rax", .{}),
         NodeKind.NdDiv => {
-            try print("  cqo\n", .{});
-            try print("  idiv %rdi\n", .{});
+            try println("  cqo", .{});
+            try println("  idiv %rdi", .{});
         },
         NodeKind.NdEq, NodeKind.NdNe, NodeKind.NdLt, NodeKind.NdLe => {
-            try print("  cmp %rdi, %rax\n", .{});
+            try println("  cmp %rdi, %rax", .{});
 
             if (node.*.kind == NodeKind.NdEq) {
-                try print("  sete %al\n", .{});
+                try println("  sete %al", .{});
             } else if (node.*.kind == NodeKind.NdNe) {
-                try print("  setne %al\n", .{});
+                try println("  setne %al", .{});
             } else if (node.*.kind == NodeKind.NdLt) {
-                try print("  setl %al\n", .{});
+                try println("  setl %al", .{});
             } else if (node.*.kind == NodeKind.NdLe) {
-                try print("  setle %al\n", .{});
+                try println("  setle %al", .{});
             }
-            try print("  movzb %al, %rax\n", .{});
+            try println("  movzb %al, %rax", .{});
         },
         else => errorAt(node.*.tok.*.loc, "code generationに失敗しました"),
     }
 }
 
 fn push() !void {
-    try print("  push %rax\n", .{});
+    try println("  push %rax", .{});
     depth += 1;
 }
 
 fn pop(arg: [:0]const u8) !void {
-    try print("  pop {}\n", .{arg});
+    try println("  pop {}", .{arg});
     depth -= 1;
 }
 
@@ -241,9 +245,9 @@ fn genAddr(node: *Node) !void {
     switch (node.*.kind) {
         NodeKind.NdVar => {
             if (node.*.variable.?.*.is_local) {
-                try print("  lea {}(%rbp), %rax\n", .{node.*.variable.?.*.offset});
+                try println("  lea {}(%rbp), %rax", .{node.*.variable.?.*.offset});
             } else {
-                try print("  lea {}(%rip), %rax\n", .{node.*.variable.?.*.name});
+                try println("  lea {}(%rip), %rax", .{node.*.variable.?.*.name});
             }
             return;
         },
@@ -294,9 +298,9 @@ fn load(ty: *Type) !void {
     }
 
     if (ty.*.size == 1) {
-        try print("  movsbq (%rax), %rax\n", .{});
+        try println("  movsbq (%rax), %rax", .{});
     } else {
-        try print("  mov (%rax), %rax\n", .{});
+        try println("  mov (%rax), %rax", .{});
     }
 }
 
@@ -304,8 +308,13 @@ fn store(ty: *Type) !void {
     try pop("%rdi");
 
     if (ty.*.size == 1) {
-        try print("  mov %al, (%rdi)\n", .{});
+        try println("  mov %al, (%rdi)", .{});
     } else {
-        try print("  mov %rax, (%rdi)\n", .{});
+        try println("  mov %rax, (%rdi)", .{});
     }
+}
+
+pub fn println(comptime format: []const u8, args: anytype) !void {
+    try outStream.print(format, args);
+    try outStream.print("\n", .{});
 }
