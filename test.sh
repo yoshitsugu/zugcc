@@ -19,7 +19,7 @@ assert() {
   set -e
   expected="$1"
   input="$2"
-  ./zig-cache/bin/zugcc "$input" > tmp.s || exit
+  echo "$input" | ./zig-cache/bin/zugcc - > tmp.s || exit
   gcc -static -o tmp tmp.s tmp2.o
   set +e
   ./tmp

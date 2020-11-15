@@ -1,14 +1,19 @@
 const std = @import("std");
+const fs = std.fs;
 const ArrayList = std.ArrayList;
+const ArrayListSentineled = std.ArrayListSentineled;
 const allocPrint0 = std.fmt.allocPrint0;
 const err = @import("error.zig");
 const errorAt = err.errorAt;
+const setTargetString = err.setTargetString;
+const setTargetFilename = err.setTargetFilename;
 const allocator = @import("allocator.zig");
 const getAllocator = allocator.getAllocator;
 const stdout = std.io.getStdOut().outStream();
 const print = stdout.print;
 const Type = @import("type.zig").Type;
 
+const SPACE_CHARS = " \n\t\x0b\x0c\r";
 const PUNCT_CHARS = "+-*/()<>;={}&,[]";
 const PUNCT_STRS = [_][:0]const u8{ "==", "!=", "<=", ">=" };
 const KEYWORDS = [_][:0]const u8{ "return", "if", "else", "for", "while", "sizeof", "char", "int" };
@@ -32,7 +37,10 @@ pub fn newToken(kind: TokenKind, val: []const u8, loc: usize) !Token {
     return Token{ .kind = kind, .val = try allocPrint0(getAllocator(), "{}", .{val}), .loc = loc, .ty = null };
 }
 
-pub fn tokenize(str: [*:0]const u8) !ArrayList(Token) {
+pub fn tokenize(filename: [:0]u8, str: [:0]u8) !ArrayList(Token) {
+    setTargetFilename(filename);
+    setTargetString(&str);
+
     var tokens = ArrayList(Token).init(getAllocator());
     var i: usize = 0;
     while (str[i] != 0) {
@@ -86,7 +94,12 @@ fn isNumber(c: u8) bool {
 }
 
 fn isSpace(c: u8) bool {
-    return c == ' ';
+    for (SPACE_CHARS) |k| {
+        if (c == k) {
+            return true;
+        }
+    }
+    return false;
 }
 
 fn isPunct(c: u8) bool {
@@ -282,4 +295,40 @@ fn fromHex(c: u8) u8 {
 
 fn isXdigit(c: u8) bool {
     return ('0' <= c and c <= '9') or ('a' <= c and c <= 'f') or ('A' <= c and c <= 'F');
+}
+
+fn readFile(filename: [:0]u8) ![:0]u8 {
+    var file: fs.File = undefined;
+    if (streq(filename, "-")) {
+        // - のときは標準入力から読み込み
+        file = std.io.getStdIn();
+    } else {
+        const cwd = fs.cwd();
+        file = cwd.openFile(filename, .{}) catch |e| {
+            std.debug.panic("Unable to open file: {}\n", .{@errorName(e)});
+        };
+    }
+    defer file.close();
+
+    var buf: [1024 * 4]u8 = undefined;
+    var result = try ArrayListSentineled(u8, 0).init(getAllocator(), "");
+    defer result.deinit();
+    while (true) {
+        const bytes_read = file.read(buf[0..]) catch |e| {
+            std.debug.panic("Unable to read from stream: {}\n", .{@errorName(e)});
+        };
+
+        if (bytes_read == 0) {
+            break;
+        }
+
+        try result.appendSlice(buf[0..bytes_read]);
+    }
+    if (!result.endsWith("\n"))
+        try result.appendSlice("\n");
+    return result.toOwnedSlice();
+}
+
+pub fn tokenizeFile(filename: [:0]u8) !ArrayList(Token) {
+    return try tokenize(filename, try readFile(filename));
 }
