@@ -9,6 +9,7 @@ const Obj = parse.Obj;
 const assert = @import("std").debug.assert;
 const err = @import("error.zig");
 const errorAt = err.errorAt;
+const errorAtToken = err.errorAtToken;
 const t = @import("type.zig");
 const Type = t.Type;
 const TypeKind = t.TypeKind;
@@ -132,7 +133,7 @@ fn genStmt(node: *Node) anyerror!void {
             try genExpr(node.*.lhs);
         },
         else => {
-            errorAt(node.*.tok.*.loc, "invalid statement");
+            errorAtToken(node.*.tok, "invalid statement");
         },
     }
 }
@@ -227,7 +228,7 @@ fn genExpr(nodeWithNull: ?*Node) anyerror!void {
             }
             try println("  movzb %al, %rax", .{});
         },
-        else => errorAt(node.*.tok.*.loc, "code generationに失敗しました"),
+        else => errorAtToken(node.*.tok, "code generationに失敗しました"),
     }
 }
 
@@ -255,7 +256,7 @@ fn genAddr(node: *Node) !void {
             try genExpr(node.*.lhs);
             return;
         },
-        else => errorAt(node.*.tok.*.loc, "ローカル変数ではありません"),
+        else => errorAtToken(node.*.tok, "ローカル変数ではありません"),
     }
 }
 

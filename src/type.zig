@@ -8,6 +8,7 @@ const allocator = @import("allocator.zig");
 const getAllocator = allocator.getAllocator;
 const err = @import("error.zig");
 const errorAt = err.errorAt;
+const errorAtToken = err.errorAtToken;
 
 pub const TypeKind = enum {
     TyChar,
@@ -129,7 +130,7 @@ pub fn addType(nodeWithNull: ?*Node) void {
         },
         .NdAssign => {
             if (node.*.lhs.?.*.ty.?.*.kind == .TyArray)
-                errorAt(node.*.lhs.?.*.tok.*.loc, "not an lvalue");
+                errorAtToken(node.*.lhs.?.*.tok, "not an lvalue");
             node.*.ty = node.*.lhs.?.*.ty;
             return;
         },
@@ -147,7 +148,7 @@ pub fn addType(nodeWithNull: ?*Node) void {
         },
         .NdDeref => {
             if (node.*.lhs.?.*.ty.?.*.base == null)
-                errorAt(node.*.tok.*.loc, "Invalid pointer dereference");
+                errorAtToken(node.*.tok, "Invalid pointer dereference");
             node.*.ty = node.*.lhs.?.*.ty.?.*.base;
             return;
         },
@@ -161,7 +162,7 @@ pub fn addType(nodeWithNull: ?*Node) void {
                     return;
                 }
             }
-            errorAt(node.*.tok.*.loc, "statement expression returning void is not supported");
+            errorAtToken(node.*.tok, "statement expression returning void is not supported");
         },
         else => {
             return;

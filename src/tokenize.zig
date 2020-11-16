@@ -31,15 +31,22 @@ pub const Token = struct {
     val: [:0]u8, // トークン文字列
     loc: usize, // 元の文字列上の場所
     ty: ?*Type, // 文字列のときに使う
+    line_no: usize, // 元ファイルの行数
 };
 
-pub fn newToken(kind: TokenKind, val: []const u8, loc: usize) !Token {
-    return Token{ .kind = kind, .val = try allocPrint0(getAllocator(), "{}", .{val}), .loc = loc, .ty = null };
+pub fn newToken(kind: TokenKind, val: []const u8, loc: usize, str: [:0]u8) !Token {
+    return Token{
+        .kind = kind,
+        .val = try allocPrint0(getAllocator(), "{}", .{val}),
+        .loc = loc,
+        .ty = null,
+        .line_no = getLineNo(str, loc),
+    };
 }
 
 pub fn tokenize(filename: [:0]u8, str: [:0]u8) !ArrayList(Token) {
     setTargetFilename(filename);
-    setTargetString(&str);
+    setTargetString(str);
 
     var tokens = ArrayList(Token).init(getAllocator());
     var i: usize = 0;
@@ -56,7 +63,7 @@ pub fn tokenize(filename: [:0]u8, str: [:0]u8) !ArrayList(Token) {
             while (!startsWith(str, i, "*/")) {
                 i += 1;
                 if (i >= str.len)
-                    errorAt(i, "コメントが閉じられていません");
+                    errorAt(i, null, "コメントが閉じられていません");
             }
             i += 2;
             continue;
@@ -68,7 +75,7 @@ pub fn tokenize(filename: [:0]u8, str: [:0]u8) !ArrayList(Token) {
         if (isNumber(c)) {
             const h = i;
             i = expectNumber(str, i);
-            const num = try newToken(.TkNum, str[h..i], i);
+            const num = try newToken(.TkNum, str[h..i], i, str);
             try tokens.append(num);
             continue;
         }
@@ -80,27 +87,27 @@ pub fn tokenize(filename: [:0]u8, str: [:0]u8) !ArrayList(Token) {
         if (isIdentHead(c)) {
             const h = i;
             i = readIdent(str, i);
-            var tk = try newToken(.TkIdent, str[h..i], i);
+            var tk = try newToken(.TkIdent, str[h..i], i, str);
             if (isKeyword(str, h, i)) {
-                tk = try newToken(.TkKeyword, str[h..i], i);
+                tk = try newToken(.TkKeyword, str[h..i], i, str);
             }
             try tokens.append(tk);
             continue;
         }
         const puncts_end = readPuncts(str, i);
         if (puncts_end > i) {
-            const punct = try newToken(.TkPunct, str[i..puncts_end], i);
+            const punct = try newToken(.TkPunct, str[i..puncts_end], i, str);
             try tokens.append(punct);
             i = puncts_end;
             continue;
         }
         if (isPunct(c)) {
-            const punct = try newToken(.TkPunct, str[i .. i + 1], i);
+            const punct = try newToken(.TkPunct, str[i .. i + 1], i, str);
             try tokens.append(punct);
             i += 1;
             continue;
         }
-        errorAt(i, "トークナイズできませんでした");
+        errorAt(i, null, "トークナイズできませんでした");
     }
     return tokens;
 }
@@ -170,7 +177,7 @@ fn expectNumber(ptr: [*:0]const u8, index: usize) usize {
     if (isNumber(ptr[index])) {
         return consumeNumber(ptr, index);
     } else {
-        errorAt(index, "数値ではありません");
+        errorAt(index, null, "数値ではありません");
     }
 }
 
@@ -229,7 +236,7 @@ fn stringLiteralEnd(str: [*:0]const u8, index: usize) usize {
     while (c != '"') : (c = str[h]) {
         const cs = [_:0]u8{c};
         if (c == '\n' or c == 0)
-            errorAt(index, "文字列リテラルが閉じられていません");
+            errorAt(index, null, "文字列リテラルが閉じられていません");
         if (c == '\\') {
             h += 2;
         } else {
@@ -239,7 +246,7 @@ fn stringLiteralEnd(str: [*:0]const u8, index: usize) usize {
     return h;
 }
 
-fn readStringLiteral(tokens: ArrayList(Token), str: [*:0]const u8, index: *usize) !*Token {
+fn readStringLiteral(tokens: ArrayList(Token), str: [:0]u8, index: *usize) !*Token {
     const start = index.*;
     const end = stringLiteralEnd(str, start + 1);
     var buf: []u8 = try getAllocator().alloc(u8, end - start);
@@ -259,7 +266,7 @@ fn readStringLiteral(tokens: ArrayList(Token), str: [*:0]const u8, index: *usize
     index.* = end + 1;
     const tokenVal = try allocPrint0(getAllocator(), "{}", .{buf[0..len]});
     var tok = try getAllocator().create(Token);
-    tok.* = try newToken(.TkStr, tokenVal, i);
+    tok.* = try newToken(.TkStr, tokenVal, i, str);
     // 文字列は終端文字の都合上、長さが +1 になる
     tok.*.ty = Type.arrayOf(Type.typeChar(), len + 1);
     return tok;
@@ -300,7 +307,7 @@ fn readEscapedChar(str: [*:0]const u8, index: *usize) u8 {
 
 fn readHex(str: [*:0]const u8, index: *usize) u8 {
     if (!isXdigit(str[index.*]))
-        errorAt(index.*, "16進数ではありません");
+        errorAt(index.*, null, "16進数ではありません");
 
     var j = index.*;
     var c: u8 = 0;
@@ -358,4 +365,18 @@ fn readFile(filename: [:0]u8) ![:0]u8 {
 
 pub fn tokenizeFile(filename: [:0]u8) !ArrayList(Token) {
     return try tokenize(filename, try readFile(filename));
+}
+
+pub fn getLineNo(str: [:0]const u8, loc: usize) usize {
+    var i: usize = 0;
+    var n: usize = 1;
+
+    while (i < str.len) : (i += 1) {
+        if (loc == i) {
+            return n;
+        }
+        if (str[i] == '\n')
+            n += 1;
+    }
+    return 0;
 }

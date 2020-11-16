@@ -6,6 +6,7 @@ const print = stdout.print;
 const allocPrint0 = std.fmt.allocPrint0;
 const err = @import("error.zig");
 const errorAt = err.errorAt;
+const errorAtToken = err.errorAtToken;
 const tokenize = @import("tokenize.zig");
 const Token = tokenize.Token;
 const TokenKind = tokenize.TokenKind;
@@ -445,7 +446,7 @@ fn compoundStmt(tokens: []Token, ti: *usize) *Node {
     leaveScope();
 
     if (!end) {
-        errorAt(tokens[tokens.len - 1].loc, " } がありません");
+        errorAtToken(&tokens[tokens.len - 1], " } がありません");
     }
     return newBlockNode(head.next, getOrLast(tokens, ti));
 }
@@ -463,7 +464,7 @@ fn exprStmt(tokens: []Token, ti: *usize) *Node {
 // declaration = declspec (declarator ("=" expr)? ("," declarator ("=" expr)?)*)? ";"
 fn declaration(tokens: []Token, ti: *usize) *Node {
     if (tokens.len <= ti.*) {
-        errorAt(tokens.len - 1, "Unexpected EOF");
+        errorAtToken(&tokens[tokens.len - 1], "Unexpected EOF");
     }
     var token = &tokens[ti.*];
     const baseTy = declspec(tokens, ti);
@@ -505,7 +506,7 @@ fn declarator(tokens: []Token, ti: *usize, typ: *Type) *Type {
 
     var tok = &tokens[ti.*];
     if (tok.*.kind != .TkIdent)
-        errorAt(tok.*.loc, "expected a variable name");
+        errorAtToken(tok, "expected a variable name");
 
     ti.* += 1;
     ty = typeSuffix(tokens, ti, ty);
@@ -686,7 +687,7 @@ fn postfix(tokens: []Token, ti: *usize) *Node {
 //         | str
 //         | num
 fn primary(tokens: []Token, ti: *usize) *Node {
-    const token = tokens[ti.*];
+    var token = tokens[ti.*];
     if (streq(token.val, "(") and ti.* + 1 < tokens.len and streq(tokens[ti.* + 1].val, "{")) {
         // This is a GNU statement expression
         var node = Node.allocInit(.NdStmtExpr, &tokens[ti.*]);
@@ -718,7 +719,7 @@ fn primary(tokens: []Token, ti: *usize) *Node {
         // 変数
         var v = findVar(token);
         if (v == null) {
-            errorAt(token.loc, "変数が未定義です");
+            errorAtToken(&token, "変数が未定義です");
         }
         ti.* += 1;
         return newVarNode(v.?, getOrLast(tokens, ti));
@@ -735,7 +736,7 @@ fn primary(tokens: []Token, ti: *usize) *Node {
         return newNum(token.val, getOrLast(tokens, ti));
     }
 
-    errorAt(token.loc, "expected an expression");
+    errorAtToken(&token, "expected an expression");
 }
 
 // funcall = ident "(" (assign ("," assign)*)? ")"
@@ -761,24 +762,24 @@ fn funcall(tokens: []Token, ti: *usize) *Node {
 
 fn skip(tokens: []Token, ti: *usize, s: [:0]const u8) void {
     if (tokens.len <= ti.*) {
-        errorAt(tokens.len, "予期せず入力が終了しました。最後に ; を入力してください。");
+        errorAt(tokens.len, null, "予期せず入力が終了しました。最後に ; を入力してください。");
     }
-    const token = tokens[ti.*];
+    var token = tokens[ti.*];
     if (streq(token.val, s)) {
         ti.* += 1;
     } else {
         const string = allocPrint0(getAllocator(), "期待した文字列 {} がありません", .{s}) catch "期待した文字列がありません";
-        errorAt(token.loc, string);
+        errorAtToken(&token, string);
     }
 }
 
 fn getNumber(tokens: []Token, ti: *usize) i32 {
     if (tokens.len <= ti.*) {
-        errorAt(ti.*, "数値ではありません");
+        errorAt(ti.*, null, "数値ではありません");
     }
-    const tok = tokens[ti.*];
+    var tok = tokens[ti.*];
     if (tok.kind != TokenKind.TkNum)
-        errorAt(tok.loc, "数値ではありません");
+        errorAtToken(&tok, "数値ではありません");
     ti.* += 1;
     return atoi(tok.val);
 }
@@ -805,7 +806,7 @@ fn newAdd(lhs: *Node, rhs: *Node, tok: *Token) *Node {
 
     // ptr + ptr はエラー
     if (lhs.*.ty.?.*.base != null and rhs.*.ty.?.*.base != null)
-        errorAt(tok.loc, "invalid operands");
+        errorAtToken(tok, "invalid operands");
 
     var l = lhs;
     var r = rhs;
@@ -851,7 +852,7 @@ fn newSub(lhs: *Node, rhs: *Node, tok: *Token) *Node {
         return n;
     }
 
-    errorAt(tok.loc, "Invalid operands");
+    errorAtToken(tok, "Invalid operands");
 }
 
 fn createParamLvars(param: ?*Type) void {
@@ -865,7 +866,7 @@ fn createParamLvars(param: ?*Type) void {
 
 fn isTypeName(tokens: []Token, ti: *usize) bool {
     if (tokens.len <= ti.*) {
-        errorAt(ti.*, "Unexpected EOF");
+        errorAt(ti.*, null, "Unexpected EOF");
     }
     const tok = tokens[ti.*];
     return streq(tok.val, "int") or streq(tok.val, "char");
