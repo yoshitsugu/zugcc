@@ -184,6 +184,11 @@ fn genExpr(nodeWithNull: ?*Node) anyerror!void {
             }
             return;
         },
+        NodeKind.NdComma => {
+            try genExpr(node.*.lhs);
+            try genExpr(node.*.rhs);
+            return;
+        },
         NodeKind.NdFuncall => {
             var arg: ?*Node = node.*.args;
             var nargs: usize = 0;
@@ -245,7 +250,7 @@ fn pop(arg: [:0]const u8) !void {
     depth -= 1;
 }
 
-fn genAddr(node: *Node) !void {
+fn genAddr(node: *Node) anyerror!void {
     switch (node.*.kind) {
         NodeKind.NdVar => {
             if (node.*.variable.?.*.is_local) {
@@ -257,6 +262,11 @@ fn genAddr(node: *Node) !void {
         },
         NodeKind.NdDeref => {
             try genExpr(node.*.lhs);
+            return;
+        },
+        NodeKind.NdComma => {
+            try genExpr(node.*.lhs);
+            try genAddr(node.*.rhs.?);
             return;
         },
         else => errorAtToken(node.*.tok, "ローカル変数ではありません"),

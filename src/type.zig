@@ -138,6 +138,10 @@ pub fn addType(nodeWithNull: ?*Node) void {
             node.*.ty = Type.typeInt();
             return;
         },
+        .NdComma => {
+            node.*.ty = node.*.rhs.?.*.ty;
+            return;
+        },
         .NdAddr => {
             if (node.*.lhs.?.*.ty.?.*.kind == .TyArray) {
                 node.*.ty = Type.pointerTo(node.*.lhs.?.*.ty.?.*.base.?);

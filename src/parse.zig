@@ -30,6 +30,7 @@ pub const NodeKind = enum {
     NdLt, // <
     NdLe, // <=
     NdAssign, // =
+    NdComma, // ,
     NdAddr, // 単項演算子の&
     NdDeref, // 単項演算子の*
     NdReturn, // return
@@ -558,9 +559,12 @@ fn funcParams(tokens: []Token, ti: *usize, ty: *Type) *Type {
     return tp;
 }
 
-// expr = assign
+// expr = assign ("," expr)?
 pub fn expr(tokens: []Token, ti: *usize) *Node {
-    return assign(tokens, ti);
+    var node = assign(tokens, ti);
+    if (consumeTokVal(tokens, ti, ","))
+        return newBinary(.NdComma, node, expr(tokens, ti), &tokens[ti.* - 1]);
+    return node;
 }
 
 // assign = equality ("=" assign)?
