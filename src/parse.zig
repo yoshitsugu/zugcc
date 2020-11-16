@@ -156,6 +156,46 @@ pub const Obj = struct {
     }
 };
 
+// ローカル変数、グローバル変数のスコープ
+const VarScope = struct {
+    next: ?*VarScope,
+    name: [:0]u8,
+    variable: *Obj,
+
+    pub fn init(name: [:0]u8, v: *Obj) VarScope {
+        return VarScope{
+            .next = null,
+            .name = name,
+            .variable = v,
+        };
+    }
+
+    pub fn allocInit(name: [:0]u8, v: *Obj) *VarScope {
+        var vs = getAllocator().create(VarScope) catch @panic("cannot allocate VarScope");
+        vs.* = VarScope.init(name, v);
+        return vs;
+    }
+};
+
+// ブロックのスコープ
+const Scope = struct {
+    next: ?*Scope,
+    vars: ?*VarScope,
+
+    pub fn allocInit() *Scope {
+        var sc = getAllocator().create(Scope) catch @panic("cannot allocate Scope");
+        sc.* = Scope{ .next = null, .vars = null };
+        return sc;
+    }
+};
+
+fn pushVarToScope(v: *Obj) *VarScope {
+    var vs = VarScope.allocInit(v.*.name, v);
+    vs.*.next = current_scope.*.vars;
+    current_scope.*.vars = vs;
+    return vs;
+}
+
 pub fn newBinary(kind: NodeKind, lhs: *Node, rhs: *Node, tok: *Token) *Node {
     var node = Node.allocInit(kind, tok);
     node.*.lhs = lhs;
@@ -211,17 +251,31 @@ var fn_args: ArrayList(*Obj) = undefined;
 var locals: ArrayList(*Obj) = undefined;
 // グローバル変数のリストを一時的に保有するためのグローバル変数
 var globals: ArrayList(*Obj) = undefined;
+// 現在のスコープを保持するためのグローバル変数
+var current_scope: *Scope = undefined;
 
 fn newLvar(name: [:0]u8, ty: *Type) *Obj {
     var v = Obj.allocVar(true, name, ty);
+    _ = pushVarToScope(v);
     locals.append(v) catch @panic("ローカル変数のパースに失敗しました");
     return v;
 }
 
 fn newGvar(name: [:0]u8, ty: *Type) *Obj {
     var v = Obj.allocVar(false, name, ty);
+    _ = pushVarToScope(v);
     globals.append(v) catch @panic("グローバル変数のパースに失敗しました");
     return v;
+}
+
+fn enterScope() void {
+    var sc = Scope.allocInit();
+    sc.*.next = current_scope;
+    current_scope = sc;
+}
+
+fn leaveScope() void {
+    current_scope = current_scope.*.next.?;
 }
 
 fn findVar(token: Token) ?*Obj {
@@ -249,6 +303,7 @@ fn getOrLast(tokens: []Token, ti: *usize) *Token {
 pub fn parse(tokens: []Token, ti: *usize) !ArrayList(*Obj) {
     Type.initGlobals();
     globals = ArrayList(*Obj).init(getAllocator());
+    current_scope = Scope.allocInit();
     while (ti.* < tokens.len) {
         const basety = declspec(tokens, ti);
         if (isFunction(tokens, ti)) {
@@ -276,6 +331,8 @@ fn function(tokens: []Token, ti: *usize, basety: *Type) *Obj {
     locals = ArrayList(*Obj).init(getAllocator());
     const ty = declarator(tokens, ti, basety);
 
+    enterScope();
+
     createParamLvars(ty.*.params);
     var params = ArrayList(*Obj).init(getAllocator());
     for (locals.items) |lc| {
@@ -288,6 +345,9 @@ fn function(tokens: []Token, ti: *usize, basety: *Type) *Obj {
     f.*.params = params;
     f.*.body = compoundStmt(tokens, ti);
     f.*.locals = locals;
+
+    leaveScope();
+
     return f;
 }
 
@@ -365,6 +425,9 @@ fn compoundStmt(tokens: []Token, ti: *usize) *Node {
     var head = Node.init(.NdNum, getOrLast(tokens, ti));
     var cur: *Node = &head;
     var end = false;
+
+    enterScope();
+
     while (ti.* < tokens.len) {
         if (consumeTokVal(tokens, ti, "}")) {
             end = true;
@@ -378,6 +441,9 @@ fn compoundStmt(tokens: []Token, ti: *usize) *Node {
         cur = cur.*.next.?;
         addType(cur);
     }
+
+    leaveScope();
+
     if (!end) {
         errorAt(tokens[tokens.len - 1].loc, " } がありません");
     }
