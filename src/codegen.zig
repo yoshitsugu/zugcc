@@ -87,6 +87,8 @@ fn emitText(prog: ArrayList(*Obj)) !void {
 }
 
 fn genStmt(node: *Node) anyerror!void {
+    try println("  .loc 1 {}", .{node.*.tok.*.line_no});
+
     switch (node.*.kind) {
         NodeKind.NdIf => {
             const c = count();
@@ -143,6 +145,7 @@ fn genExpr(nodeWithNull: ?*Node) anyerror!void {
         return;
     }
     const node: *Node = nodeWithNull.?;
+    try println("  .loc 1 {}", .{node.*.tok.*.line_no});
     switch (node.*.kind) {
         NodeKind.NdNum => {
             try println("  mov ${}, %rax", .{node.*.val});

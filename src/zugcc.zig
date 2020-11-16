@@ -32,6 +32,7 @@ pub fn main() !void {
     var ti: usize = 0;
     const functions = try parse(tokenized.items, &ti);
     var out = openOutFile(option.*.output_path);
+    try out.outStream().print("  .file 1 \"{}\"\n", .{option.*.input_path});
     try codegen(functions, &out);
 }
 
