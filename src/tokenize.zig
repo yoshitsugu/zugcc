@@ -45,6 +45,22 @@ pub fn tokenize(filename: [:0]u8, str: [:0]u8) !ArrayList(Token) {
     var i: usize = 0;
     while (str[i] != 0) {
         const c = str[i];
+        if (startsWith(str, i, "//")) {
+            i += 2;
+            while (str[i] != '\n')
+                i += 1;
+            continue;
+        }
+        if (startsWith(str, i, "/*")) {
+            i += 2;
+            while (!startsWith(str, i, "*/")) {
+                i += 1;
+                if (i >= str.len)
+                    errorAt(i, "コメントが閉じられていません");
+            }
+            i += 2;
+            continue;
+        }
         if (isSpace(c)) {
             i += 1;
             continue;
@@ -168,6 +184,17 @@ fn consumeNumber(ptr: [*:0]const u8, index: usize) usize {
 
 pub fn streq(a: [:0]const u8, b: [:0]const u8) bool {
     return std.mem.eql(u8, a, b);
+}
+
+fn startsWith(str: [:0]u8, i: usize, target: [:0]const u8) bool {
+    if (target.len > str.len)
+        return false;
+    var j: usize = 0;
+    while (j + i + target.len < str.len and j < target.len) : (j += 1) {
+        if (str[i + j] != target[j])
+            return false;
+    }
+    return j == target.len;
 }
 
 pub fn atoi(s: [:0]u8) i32 {
