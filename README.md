@@ -1,0 +1,2 @@
+- try to clone https://github.com/rui314/chibicc in Zig.
+- This is just for my study.
