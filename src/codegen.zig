@@ -156,7 +156,7 @@ fn genExpr(nodeWithNull: ?*Node) anyerror!void {
             try println("  neg %rax", .{});
             return;
         },
-        NodeKind.NdVar => {
+        NodeKind.NdVar, NodeKind.NdMember => {
             try genAddr(node);
             try load(node.*.ty.?);
             return;
@@ -267,6 +267,11 @@ fn genAddr(node: *Node) anyerror!void {
         NodeKind.NdComma => {
             try genExpr(node.*.lhs);
             try genAddr(node.*.rhs.?);
+            return;
+        },
+        NodeKind.NdMember => {
+            try genAddr(node.*.lhs.?);
+            try println("  add ${}, %rax", .{node.*.member.?.*.offset});
             return;
         },
         else => errorAtToken(node.*.tok, "ローカル変数ではありません"),

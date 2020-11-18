@@ -2,7 +2,9 @@ const std = @import("std");
 const allocPrint0 = std.fmt.allocPrint0;
 const stdout = std.io.getStdOut().outStream();
 const print = stdout.print;
-const Node = @import("parse.zig").Node;
+const ps = @import("parse.zig");
+const Node = ps.Node;
+const Member = ps.Member;
 const Token = @import("tokenize.zig").Token;
 const allocator = @import("allocator.zig");
 const getAllocator = allocator.getAllocator;
@@ -16,6 +18,7 @@ pub const TypeKind = enum {
     TyPtr,
     TyFunc,
     TyArray,
+    TyStruct,
 };
 
 pub const Type = struct {
@@ -29,6 +32,9 @@ pub const Type = struct {
 
     // Array
     array_len: usize,
+
+    // Struct
+    members: ?*Member,
 
     // 関数
     return_ty: ?*Type,
@@ -48,6 +54,7 @@ pub const Type = struct {
             .base = null,
             .name = null,
             .array_len = 0,
+            .members = null,
             .return_ty = null,
             .params = null,
             .next = null,
@@ -140,6 +147,10 @@ pub fn addType(nodeWithNull: ?*Node) void {
         },
         .NdComma => {
             node.*.ty = node.*.rhs.?.*.ty;
+            return;
+        },
+        .NdMember => {
+            node.*.ty = node.*.member.?.*.ty;
             return;
         },
         .NdAddr => {

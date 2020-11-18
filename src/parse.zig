@@ -31,6 +31,7 @@ pub const NodeKind = enum {
     NdLe, // <=
     NdAssign, // =
     NdComma, // ,
+    NdMember, // . (struct member access)
     NdAddr, // 単項演算子の&
     NdDeref, // 単項演算子の*
     NdReturn, // return
@@ -62,6 +63,9 @@ pub const Node = struct {
     init: ?*Node,
     inc: ?*Node,
 
+    // Structのメンバ
+    member: ?*Member,
+
     // 関数呼出のときに使う
     funcname: ?[:0]u8,
     args: ?*Node,
@@ -83,6 +87,7 @@ pub const Node = struct {
             .els = null,
             .init = null,
             .inc = null,
+            .member = null,
             .funcname = null,
             .args = null,
             .variable = null,
@@ -94,6 +99,28 @@ pub const Node = struct {
         var node = getAllocator().create(Node) catch @panic("cannot allocate Node");
         node.* = Node.init(kind, tok);
         return node;
+    }
+};
+
+pub const Member = struct {
+    next: ?*Member,
+    ty: ?*Type,
+    name: *Token,
+    offset: usize,
+
+    pub fn init(name: *Token) Member {
+        return Member{
+            .next = null,
+            .ty = null,
+            .name = name,
+            .offset = 0,
+        };
+    }
+
+    pub fn allocInit(name: *Token) *Member {
+        var m = getAllocator().create(Member) catch @panic("cannot allocate Member");
+        m.* = Member.init(name);
+        return m;
     }
 };
 
@@ -515,14 +542,63 @@ fn declarator(tokens: []Token, ti: *usize, typ: *Type) *Type {
     return ty;
 }
 
-// declspec = "char" | "int"
+// declspec = "char" | "int" | struct-decl
 fn declspec(tokens: []Token, ti: *usize) *Type {
-    if (consumeTokVal(tokens, ti, "char")) {
+    if (consumeTokVal(tokens, ti, "char"))
         return Type.typeChar();
+
+    if (consumeTokVal(tokens, ti, "int"))
+        return Type.typeInt();
+
+    if (consumeTokVal(tokens, ti, "struct"))
+        return structDecl(tokens, ti);
+
+    errorAtToken(getOrLast(tokens, ti), "typename expected");
+}
+
+// struct-decl = "{" struct-members
+fn structDecl(tokens: []Token, ti: *usize) *Type {
+    skip(tokens, ti, "{");
+
+    // construct struct object
+    var ty = Type.allocInit(.TyStruct);
+    structMembers(tokens, ti, ty);
+
+    // Assign offsets within the struct tomembers
+    var offset: usize = 0;
+    var m = ty.*.members;
+    while (m != null) : (m = m.?.*.next) {
+        m.?.*.offset = offset;
+        offset += m.?.*.ty.?.*.size;
+    }
+    ty.*.size = offset;
+
+    return ty;
+}
+
+// struct-members = (declspec declarator (","  declarator)* ";")*
+fn structMembers(tokens: []Token, ti: *usize, ty: *Type) void {
+    var head = Member.init(&tokens[ti.*]);
+    var cur: *Member = &head;
+
+    while (!consumeTokVal(tokens, ti, "}")) {
+        var basety = declspec(tokens, ti);
+        var first: bool = true;
+
+        while (!consumeTokVal(tokens, ti, ";")) {
+            if (!first)
+                skip(tokens, ti, ",");
+            first = false;
+
+            var t = declarator(tokens, ti, basety);
+            var m = Member.allocInit(t.*.name.?);
+            m.ty = t;
+            cur.*.next = m;
+            cur = cur.*.next.?;
+        }
     }
 
-    skip(tokens, ti, "int");
-    return Type.typeInt();
+    ty.*.members = head.next;
 }
 
 // type-suffix = "(" func-params
@@ -670,18 +746,45 @@ pub fn unary(tokens: []Token, ti: *usize) *Node {
     return postfix(tokens, ti);
 }
 
-// postfix = primary ("[" expr "]")*
+// postfix = primary ("[" expr "]" | "." ident)*
 fn postfix(tokens: []Token, ti: *usize) *Node {
     var node = primary(tokens, ti);
 
-    while (consumeTokVal(tokens, ti, "[")) {
-        var start = &tokens[ti.* - 1];
-        var idx = expr(tokens, ti);
-        skip(tokens, ti, "]");
-        node = newUnary(.NdDeref, newAdd(node, idx, start), start);
+    while (true) {
+        if (consumeTokVal(tokens, ti, "[")) {
+            var start = &tokens[ti.* - 1];
+            var idx = expr(tokens, ti);
+            skip(tokens, ti, "]");
+            node = newUnary(.NdDeref, newAdd(node, idx, start), start);
+            continue;
+        }
+        if (consumeTokVal(tokens, ti, ".")) {
+            node = structRef(tokens, ti, node);
+            ti.* += 1;
+            continue;
+        }
+        return node;
     }
+}
 
+fn structRef(tokens: []Token, ti: *usize, lhs: *Node) *Node {
+    addType(lhs);
+    if (lhs.*.ty.?.*.kind != TypeKind.TyStruct)
+        errorAtToken(lhs.*.tok, "structではありません");
+
+    var node = newUnary(.NdMember, lhs, getOrLast(tokens, ti));
+    node.*.member = getStructMember(tokens, ti, lhs.*.ty.?);
     return node;
+}
+
+fn getStructMember(tokens: []Token, ti: *usize, ty: *Type) *Member {
+    var m = ty.*.members;
+    var tok = &tokens[ti.*];
+    while (m != null) : (m = m.?.*.next) {
+        if (streq(m.?.*.name.*.val, tok.*.val))
+            return m.?;
+    }
+    errorAtToken(tok, "no such member");
 }
 
 // primary = "(" "{" stmt+ "}" ")"
@@ -873,5 +976,5 @@ fn isTypeName(tokens: []Token, ti: *usize) bool {
         errorAt(ti.*, null, "Unexpected EOF");
     }
     const tok = tokens[ti.*];
-    return streq(tok.val, "int") or streq(tok.val, "char");
+    return streq(tok.val, "int") or streq(tok.val, "char") or streq(tok.val, "struct");
 }
