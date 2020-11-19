@@ -218,4 +218,7 @@ assert 0 'int main() { struct {} x; return sizeof(x); }'
 assert 16 'int main() { struct {char a; int b;} x; return sizeof(x); }'
 assert 16 'int main() { struct {int a; char b;} x; return sizeof(x); }'
 
+assert 15 'int main() { int x; int y; char z; char *a=&y; char *b=&z; return b-a; }'
+assert 1 'int main() { int x; char y; int z; char *a=&y; char *b=&z; return b-a; }'
+
 echo OK

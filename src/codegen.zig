@@ -289,6 +289,7 @@ fn assignLvarOffsets(prog: ArrayList(*Obj)) void {
             var li: usize = ls.len - 1;
             while (true) {
                 offset += @intCast(i32, ls[li].ty.?.*.size);
+                offset = alignTo(offset, @intCast(i32, ls[li].ty.?.*.alignment));
                 ls[li].offset = -offset;
                 if (li > 0) {
                     li -= 1;
