@@ -214,7 +214,8 @@ assert 24 'int main() { struct {int a[3];} x; return sizeof(x); }'
 assert 32 'int main() { struct {int a;} x[4]; return sizeof(x); }'
 assert 48 'int main() { struct {int a[3];} x[2]; return sizeof(x); }'
 assert 2 'int main() { struct {char a; char b;} x; return sizeof(x); }'
-assert 9 'int main() { struct {char a; int b;} x; return sizeof(x); }'
 assert 0 'int main() { struct {} x; return sizeof(x); }'
+assert 16 'int main() { struct {char a; int b;} x; return sizeof(x); }'
+assert 16 'int main() { struct {int a; char b;} x; return sizeof(x); }'
 
 echo OK

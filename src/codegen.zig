@@ -302,7 +302,7 @@ fn assignLvarOffsets(prog: ArrayList(*Obj)) void {
 }
 
 // アライン処理。関数を呼び出す前にRBPを16アラインしないといけない。
-fn alignTo(n: i32, a: i32) i32 {
+pub fn alignTo(n: i32, a: i32) i32 {
     return @divFloor((n + a - 1), a) * a;
 }
 

@@ -18,6 +18,7 @@ const typezig = @import("type.zig");
 const TypeKind = typezig.TypeKind;
 const Type = typezig.Type;
 const addType = typezig.addType;
+const alignToI32 = @import("codegen.zig").alignTo;
 
 pub const NodeKind = enum {
     NdAdd, // +
@@ -563,15 +564,20 @@ fn structDecl(tokens: []Token, ti: *usize) *Type {
     // construct struct object
     var ty = Type.allocInit(.TyStruct);
     structMembers(tokens, ti, ty);
+    ty.*.alignment = 1;
 
     // Assign offsets within the struct tomembers
     var offset: usize = 0;
     var m = ty.*.members;
     while (m != null) : (m = m.?.*.next) {
+        offset = alignTo(offset, m.?.*.ty.?.*.alignment);
         m.?.*.offset = offset;
         offset += m.?.*.ty.?.*.size;
+
+        if (ty.*.alignment < m.?.*.ty.?.*.alignment)
+            ty.*.alignment = m.?.*.ty.?.*.alignment;
     }
-    ty.*.size = offset;
+    ty.*.size = alignTo(offset, ty.*.alignment);
 
     return ty;
 }
@@ -977,4 +983,8 @@ fn isTypeName(tokens: []Token, ti: *usize) bool {
     }
     const tok = tokens[ti.*];
     return streq(tok.val, "int") or streq(tok.val, "char") or streq(tok.val, "struct");
+}
+
+fn alignTo(n: usize, a: usize) usize {
+    return @intCast(usize, alignToI32(@intCast(i32, n), @intCast(i32, a)));
 }

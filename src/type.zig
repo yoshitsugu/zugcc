@@ -24,8 +24,8 @@ pub const TypeKind = enum {
 pub const Type = struct {
     kind: TypeKind,
 
-    // sizeof
-    size: usize,
+    size: usize, // sizeof
+    alignment: usize,
 
     base: ?*Type, // ポインタの場合に使う
     name: ?*Token, // 宣言のときに使う
@@ -51,6 +51,7 @@ pub const Type = struct {
         return Type{
             .kind = kind,
             .size = 0,
+            .alignment = 0,
             .base = null,
             .name = null,
             .array_len = 0,
@@ -70,12 +71,14 @@ pub const Type = struct {
     pub fn typeInt() *Type {
         var ty = Type.allocInit(.TyInt);
         ty.*.size = 8;
+        ty.*.alignment = 8;
         return ty;
     }
 
     pub fn typeChar() *Type {
         var ty = Type.allocInit(.TyChar);
         ty.*.size = 1;
+        ty.*.alignment = 1;
         return ty;
     }
 
@@ -83,6 +86,7 @@ pub const Type = struct {
         var ty = Type.allocInit(.TyPtr);
         ty.*.base = base;
         ty.*.size = 8;
+        ty.*.alignment = 8;
         return ty;
     }
 
@@ -99,6 +103,7 @@ pub const Type = struct {
     pub fn arrayOf(base: *Type, len: usize) *Type {
         var ty = Type.allocInit(.TyArray);
         ty.*.size = base.*.size * len;
+        ty.*.alignment = base.*.alignment;
         ty.*.base = base;
         ty.*.array_len = len;
         return ty;
