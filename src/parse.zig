@@ -207,14 +207,36 @@ const VarScope = struct {
     }
 };
 
+// 構造体タグ名のスコープ
+const TagScope = struct {
+    next: ?*TagScope,
+    name: [:0]u8,
+    ty: ?*Type,
+
+    pub fn init(name: [:0]u8) TagScope {
+        return TagScope{
+            .next = null,
+            .name = name,
+            .ty = null,
+        };
+    }
+
+    pub fn allocInit(name: [:0]u8) *TagScope {
+        var s = getAllocator().create(TagScope) catch @panic("cannot allocate TagScope");
+        s.* = TagScope.init(name);
+        return s;
+    }
+};
+
 // ブロックのスコープ
 const Scope = struct {
     next: ?*Scope,
     vars: ?*VarScope,
+    tags: ?*TagScope,
 
     pub fn allocInit() *Scope {
         var sc = getAllocator().create(Scope) catch @panic("cannot allocate Scope");
-        sc.* = Scope{ .next = null, .vars = null };
+        sc.* = Scope{ .next = null, .vars = null, .tags = null };
         return sc;
     }
 };
@@ -224,6 +246,13 @@ fn pushVarToScope(v: *Obj) *VarScope {
     vs.*.next = current_scope.*.vars;
     current_scope.*.vars = vs;
     return vs;
+}
+
+fn pushTagScope(tok: *Token, ty: *Type) void {
+    var ts = TagScope.allocInit(tok.*.val);
+    ts.*.ty = ty;
+    ts.*.next = current_scope.*.tags;
+    current_scope.*.tags = ts;
 }
 
 pub fn newBinary(kind: NodeKind, lhs: *Node, rhs: *Node, tok: *Token) *Node {
@@ -317,6 +346,18 @@ fn findVar(token: Token) ?*Obj {
     for (globals.items) |gv| {
         if (streq(gv.*.name, token.val)) {
             return gv;
+        }
+    }
+    return null;
+}
+
+fn findTag(token: *Token) ?*Type {
+    var s: ?*Scope = current_scope;
+    while (s != null) : (s = s.?.*.next) {
+        var t = s.?.*.tags;
+        while (t != null) : (t = t.?.*.next) {
+            if (streq(token.*.val, t.?.*.name))
+                return t.?.*.ty;
         }
     }
     return null;
@@ -557,9 +598,23 @@ fn declspec(tokens: []Token, ti: *usize) *Type {
     errorAtToken(getOrLast(tokens, ti), "typename expected");
 }
 
-// struct-decl = "{" struct-members
+// struct-decl = ident? "{" struct-members
 fn structDecl(tokens: []Token, ti: *usize) *Type {
-    skip(tokens, ti, "{");
+    var tok = getOrLast(tokens, ti);
+
+    // 構造体タグ名を読む
+    var tag: ?*Token = null;
+    if (tok.*.kind == TokenKind.TkIdent) {
+        tag = tok;
+        ti.* += 1;
+    }
+
+    if (!consumeTokVal(tokens, ti, "{") and tag != null) {
+        var tyTag = findTag(tag.?);
+        if (tyTag == null)
+            errorAtToken(&tokens[ti.*], "Unknown struct type");
+        return tyTag.?;
+    }
 
     // construct struct object
     var ty = Type.allocInit(.TyStruct);
@@ -579,6 +634,8 @@ fn structDecl(tokens: []Token, ti: *usize) *Type {
     }
     ty.*.size = alignTo(offset, ty.*.alignment);
 
+    if (tag != null)
+        pushTagScope(tag.?, ty);
     return ty;
 }
 
