@@ -809,7 +809,7 @@ pub fn unary(tokens: []Token, ti: *usize) *Node {
     return postfix(tokens, ti);
 }
 
-// postfix = primary ("[" expr "]" | "." ident)*
+// postfix = primary ("[" expr "]" | "." ident | "->" ident)*
 fn postfix(tokens: []Token, ti: *usize) *Node {
     var node = primary(tokens, ti);
 
@@ -822,6 +822,12 @@ fn postfix(tokens: []Token, ti: *usize) *Node {
             continue;
         }
         if (consumeTokVal(tokens, ti, ".")) {
+            node = structRef(tokens, ti, node);
+            ti.* += 1;
+            continue;
+        }
+        if (consumeTokVal(tokens, ti, "->")) {
+            node = newUnary(.NdDeref, node, getOrLast(tokens, ti));
             node = structRef(tokens, ti, node);
             ti.* += 1;
             continue;

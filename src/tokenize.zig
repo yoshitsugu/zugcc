@@ -15,7 +15,7 @@ const Type = @import("type.zig").Type;
 
 const SPACE_CHARS = " \n\t\x0b\x0c\r";
 const PUNCT_CHARS = "+-*/()<>;={}&,[].";
-const PUNCT_STRS = [_][:0]const u8{ "==", "!=", "<=", ">=" };
+const PUNCT_STRS = [_][:0]const u8{ "==", "!=", "<=", ">=", "->" };
 const KEYWORDS = [_][:0]const u8{ "return", "if", "else", "for", "while", "sizeof", "char", "int", "struct" };
 
 pub const TokenKind = enum {
