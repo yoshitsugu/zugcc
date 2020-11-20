@@ -207,7 +207,7 @@ const VarScope = struct {
     }
 };
 
-// 構造体タグ名のスコープ
+// 構造体、ユニオンのタグ名のスコープ
 const TagScope = struct {
     next: ?*TagScope,
     name: [:0]u8,
@@ -595,11 +595,14 @@ fn declspec(tokens: []Token, ti: *usize) *Type {
     if (consumeTokVal(tokens, ti, "struct"))
         return structDecl(tokens, ti);
 
+    if (consumeTokVal(tokens, ti, "union")) {
+        return unionDecl(tokens, ti);
+    }
     errorAtToken(getOrLast(tokens, ti), "typename expected");
 }
 
-// struct-decl = ident? "{" struct-members
-fn structDecl(tokens: []Token, ti: *usize) *Type {
+// struct-union-decl = ident? ("{" struct-members)?
+fn structUnionDecl(tokens: []Token, ti: *usize, typeKind: TypeKind) *Type {
     var tok = getOrLast(tokens, ti);
 
     // 構造体タグ名を読む
@@ -617,9 +620,19 @@ fn structDecl(tokens: []Token, ti: *usize) *Type {
     }
 
     // construct struct object
-    var ty = Type.allocInit(.TyStruct);
+    var ty = Type.allocInit(typeKind);
     structMembers(tokens, ti, ty);
     ty.*.alignment = 1;
+
+    if (tag != null)
+        pushTagScope(tag.?, ty);
+
+    return ty;
+}
+
+// struct-decl = struct-union-decl
+fn structDecl(tokens: []Token, ti: *usize) *Type {
+    var ty = structUnionDecl(tokens, ti, .TyStruct);
 
     // Assign offsets within the struct tomembers
     var offset: usize = 0;
@@ -633,9 +646,24 @@ fn structDecl(tokens: []Token, ti: *usize) *Type {
             ty.*.alignment = m.?.*.ty.?.*.alignment;
     }
     ty.*.size = alignTo(offset, ty.*.alignment);
+    return ty;
+}
 
-    if (tag != null)
-        pushTagScope(tag.?, ty);
+// union-decl = struct-union-decl
+fn unionDecl(tokens: []Token, ti: *usize) *Type {
+    var ty = structUnionDecl(tokens, ti, .TyUnion);
+
+    // If union, we don't have to assign offsets because they
+    // are already initialized to zero. We need to compute the
+    // alignment and the size though.
+    var m = ty.*.members;
+    while (m != null) : (m = m.?.*.next) {
+        if (ty.*.alignment < m.?.*.ty.?.*.alignment)
+            ty.*.alignment = m.?.*.ty.?.*.alignment;
+        if (ty.*.size < m.?.*.ty.?.*.size)
+            ty.*.size = m.?.*.ty.?.*.size;
+    }
+    ty.*.size = alignTo(ty.*.size, ty.*.alignment);
     return ty;
 }
 
@@ -838,8 +866,8 @@ fn postfix(tokens: []Token, ti: *usize) *Node {
 
 fn structRef(tokens: []Token, ti: *usize, lhs: *Node) *Node {
     addType(lhs);
-    if (lhs.*.ty.?.*.kind != TypeKind.TyStruct)
-        errorAtToken(lhs.*.tok, "structではありません");
+    if (lhs.*.ty.?.*.kind != TypeKind.TyStruct and lhs.*.ty.?.*.kind != TypeKind.TyUnion)
+        errorAtToken(lhs.*.tok, "構造体でもユニオンでもありません");
 
     var node = newUnary(.NdMember, lhs, getOrLast(tokens, ti));
     node.*.member = getStructMember(tokens, ti, lhs.*.ty.?);
@@ -1045,7 +1073,7 @@ fn isTypeName(tokens: []Token, ti: *usize) bool {
         errorAt(ti.*, null, "Unexpected EOF");
     }
     const tok = tokens[ti.*];
-    return streq(tok.val, "int") or streq(tok.val, "char") or streq(tok.val, "struct");
+    return streq(tok.val, "int") or streq(tok.val, "char") or streq(tok.val, "struct") or streq(tok.val, "union");
 }
 
 fn alignTo(n: usize, a: usize) usize {

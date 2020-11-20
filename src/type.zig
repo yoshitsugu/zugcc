@@ -19,6 +19,7 @@ pub const TypeKind = enum {
     TyFunc,
     TyArray,
     TyStruct,
+    TyUnion,
 };
 
 pub const Type = struct {
