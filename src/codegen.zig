@@ -313,7 +313,7 @@ fn count() !usize {
 }
 
 fn load(ty: *Type) !void {
-    if (ty.*.kind == TypeKind.TyArray) {
+    if (ty.*.kind == TypeKind.TyArray or ty.*.kind == TypeKind.TyStruct or ty.*.kind == TypeKind.TyUnion) {
         return;
     }
 
@@ -326,6 +326,15 @@ fn load(ty: *Type) !void {
 
 fn store(ty: *Type) !void {
     try pop("%rdi");
+
+    if (ty.*.kind == TypeKind.TyStruct or ty.*.kind == TypeKind.TyUnion) {
+        var i: usize = 0;
+        while (i < ty.*.size) : (i += 1) {
+            try println("  mov {}(%rax), %r8b", .{i});
+            try println("  mov %r8b, {}(%rdi)", .{i});
+        }
+        return;
+    }
 
     if (ty.*.size == 1) {
         try println("  mov %al, (%rdi)", .{});
