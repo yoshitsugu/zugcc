@@ -71,8 +71,8 @@ pub const Type = struct {
 
     pub fn typeInt() *Type {
         var ty = Type.allocInit(.TyInt);
-        ty.*.size = 8;
-        ty.*.alignment = 8;
+        ty.*.size = 4;
+        ty.*.alignment = 4;
         return ty;
     }
 

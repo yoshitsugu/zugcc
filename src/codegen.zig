@@ -19,6 +19,7 @@ const getAllocator = allocator.getAllocator;
 var depth: usize = 0;
 var count_i: usize = 0;
 var ARGREG8 = [_][:0]const u8{ "%dil", "%sil", "%dl", "%cl", "%r8b", "%r9b" };
+var ARGREG32 = [_][:0]const u8{ "%edi", "%esi", "%edx", "%ecx", "%r8d", "%r9d" };
 var ARGREG64 = [_][:0]const u8{ "%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9" };
 var current_fn: *Obj = undefined;
 var outStream: std.fs.File.OutStream = undefined;
@@ -68,11 +69,7 @@ fn emitText(prog: ArrayList(*Obj)) !void {
         var i: usize = fparams.len;
         while (i > 0) {
             const fparam = fparams[i - 1];
-            if (fparam.*.ty.?.*.size == 1) {
-                try println("  mov {}, {}(%rbp)", .{ ARGREG8[fparams.len - i], fparam.*.offset });
-            } else {
-                try println("  mov {}, {}(%rbp)", .{ ARGREG64[fparams.len - i], fparam.*.offset });
-            }
+            try storeGp(fparam.*.offset, fparam.*.ty.?.*.size, fparams.len - i);
             i -= 1;
         }
 
@@ -319,6 +316,8 @@ fn load(ty: *Type) !void {
 
     if (ty.*.size == 1) {
         try println("  movsbq (%rax), %rax", .{});
+    } else if (ty.*.size == 4) {
+        try println("  movsxd (%rax), %rax", .{});
     } else {
         try println("  mov (%rax), %rax", .{});
     }
@@ -338,6 +337,8 @@ fn store(ty: *Type) !void {
 
     if (ty.*.size == 1) {
         try println("  mov %al, (%rdi)", .{});
+    } else if (ty.*.size == 4) {
+        try println("  mov %eax, (%rdi)", .{});
     } else {
         try println("  mov %rax, (%rdi)", .{});
     }
@@ -346,4 +347,13 @@ fn store(ty: *Type) !void {
 pub fn println(comptime format: []const u8, args: anytype) !void {
     try outStream.print(format, args);
     try outStream.print("\n", .{});
+}
+
+fn storeGp(offset: i32, size: usize, reg: usize) !void {
+    switch (size) {
+        1 => try println("  mov {}, {}(%rbp)", .{ ARGREG8[reg], offset }),
+        4 => try println("  mov {}, {}(%rbp)", .{ ARGREG32[reg], offset }),
+        8 => try println("  mov {}, {}(%rbp)", .{ ARGREG64[reg], offset }),
+        else => unreachable,
+    }
 }
