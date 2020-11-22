@@ -14,6 +14,7 @@ const errorAtToken = err.errorAtToken;
 
 pub const TypeKind = enum {
     TyChar,
+    TyShort,
     TyInt,
     TyLong,
     TyPtr,
@@ -70,6 +71,20 @@ pub const Type = struct {
         return ty;
     }
 
+    pub fn typeChar() *Type {
+        var ty = Type.allocInit(.TyChar);
+        ty.*.size = 1;
+        ty.*.alignment = 1;
+        return ty;
+    }
+
+    pub fn typeShort() *Type {
+        var ty = Type.allocInit(.TyShort);
+        ty.*.size = 2;
+        ty.*.alignment = 2;
+        return ty;
+    }
+
     pub fn typeInt() *Type {
         var ty = Type.allocInit(.TyInt);
         ty.*.size = 4;
@@ -84,13 +99,6 @@ pub const Type = struct {
         return ty;
     }
 
-    pub fn typeChar() *Type {
-        var ty = Type.allocInit(.TyChar);
-        ty.*.size = 1;
-        ty.*.alignment = 1;
-        return ty;
-    }
-
     pub fn pointerTo(base: *Type) *Type {
         var ty = Type.allocInit(.TyPtr);
         ty.*.base = base;
@@ -100,7 +108,7 @@ pub const Type = struct {
     }
 
     pub fn isInteger(self: *Type) bool {
-        return self.*.kind == .TyInt or self.*.kind == .TyChar or self.*.kind == .TyLong;
+        return self.*.kind == .TyChar or self.*.kind == .TyShort or self.*.kind == .TyInt or self.*.kind == .TyLong;
     }
 
     pub fn funcType(return_ty: *Type) *Type {

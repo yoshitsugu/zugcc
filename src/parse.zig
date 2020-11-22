@@ -589,6 +589,9 @@ fn declspec(tokens: []Token, ti: *usize) *Type {
     if (consumeTokVal(tokens, ti, "char"))
         return Type.typeChar();
 
+    if (consumeTokVal(tokens, ti, "short"))
+        return Type.typeShort();
+
     if (consumeTokVal(tokens, ti, "int"))
         return Type.typeInt();
 
