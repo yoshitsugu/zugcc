@@ -15,6 +15,7 @@ const errorAtToken = err.errorAtToken;
 pub const TypeKind = enum {
     TyChar,
     TyInt,
+    TyLong,
     TyPtr,
     TyFunc,
     TyArray,
@@ -76,6 +77,13 @@ pub const Type = struct {
         return ty;
     }
 
+    pub fn typeLong() *Type {
+        var ty = Type.allocInit(.TyLong);
+        ty.*.size = 8;
+        ty.*.alignment = 8;
+        return ty;
+    }
+
     pub fn typeChar() *Type {
         var ty = Type.allocInit(.TyChar);
         ty.*.size = 1;
@@ -92,7 +100,7 @@ pub const Type = struct {
     }
 
     pub fn isInteger(self: *Type) bool {
-        return self.*.kind == .TyInt or self.*.kind == .TyChar;
+        return self.*.kind == .TyInt or self.*.kind == .TyChar or self.*.kind == .TyLong;
     }
 
     pub fn funcType(return_ty: *Type) *Type {
@@ -148,7 +156,7 @@ pub fn addType(nodeWithNull: ?*Node) void {
             return;
         },
         .NdEq, .NdNe, .NdLt, .NdLe, .NdVar, .NdNum, .NdFuncall => {
-            node.*.ty = Type.typeInt();
+            node.*.ty = Type.typeLong();
             return;
         },
         .NdComma => {

@@ -584,13 +584,16 @@ fn declarator(tokens: []Token, ti: *usize, typ: *Type) *Type {
     return ty;
 }
 
-// declspec = "char" | "int" | struct-decl
+// declspec = "char" | "short" | "int" | "long" | struct-decl
 fn declspec(tokens: []Token, ti: *usize) *Type {
     if (consumeTokVal(tokens, ti, "char"))
         return Type.typeChar();
 
     if (consumeTokVal(tokens, ti, "int"))
         return Type.typeInt();
+
+    if (consumeTokVal(tokens, ti, "long"))
+        return Type.typeLong();
 
     if (consumeTokVal(tokens, ti, "struct"))
         return structDecl(tokens, ti);
@@ -1073,7 +1076,9 @@ fn isTypeName(tokens: []Token, ti: *usize) bool {
         errorAt(ti.*, null, "Unexpected EOF");
     }
     const tok = tokens[ti.*];
-    return streq(tok.val, "int") or streq(tok.val, "char") or streq(tok.val, "struct") or streq(tok.val, "union");
+    return streq(tok.val, "int") or streq(tok.val, "char") or
+        streq(tok.val, "struct") or streq(tok.val, "union") or
+        streq(tok.val, "short") or streq(tok.val, "long");
 }
 
 fn alignTo(n: usize, a: usize) usize {

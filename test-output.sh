@@ -9,6 +9,10 @@ int sub(int x, int y) { return x-y; }
 int add6(int a, int b, int c, int d, int e, int f) {
   return a+b+c+d+e+f;
 }
+
+int sub_long(long a, long b, long c) {
+  return a - b - c;
+}
 EOF
 
 assert() {
@@ -246,5 +250,9 @@ assert 5 'int main() { struct t {char a, b;} x, y; x.a=5; y=x; return y.a; }'
 
 assert 3 'int main() { union {int a,b;} x,y; x.a=3; y.a=5; y=x; return y.a; }'
 assert 3 'int main() { union {struct {int a,b;} c;} x,y; x.c.b=3; y.c.b=5; y=x; return y.c.b; }'
+
+assert 1 'int main() { return sub_long(7, 3, 3); }'
+assert 16 'int main() { struct {char a; long b;} x; return sizeof(x); }'
+assert 8 'int main() { long x; return sizeof(x); }'
 
 echo OK
