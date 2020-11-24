@@ -555,6 +555,9 @@ fn declaration(tokens: []Token, ti: *usize) *Node {
         }
 
         var ty = declarator(tokens, ti, baseTy);
+        if (ty.*.kind == TypeKind.TyVoid) {
+            errorAtToken(&tokens[ti.*], "変数がvoidとして宣言されています");
+        }
         var variable = newLvar(ty.*.name.?.*.val, ty);
 
         if (!consumeTokVal(tokens, ti, "="))
@@ -604,8 +607,11 @@ fn declarator(tokens: []Token, ti: *usize, typ: *Type) *Type {
     return ty;
 }
 
-// declspec = "char" | "short" | "int" | "long" | struct-decl
+// declspec = "void" | "char" | "short" | "int" | "long" | struct-decl
 fn declspec(tokens: []Token, ti: *usize) *Type {
+    if (consumeTokVal(tokens, ti, "void"))
+        return Type.typeVoid();
+
     if (consumeTokVal(tokens, ti, "char"))
         return Type.typeChar();
 
@@ -1099,9 +1105,13 @@ fn isTypeName(tokens: []Token, ti: *usize) bool {
         errorAt(ti.*, null, "Unexpected EOF");
     }
     const tok = tokens[ti.*];
-    return streq(tok.val, "int") or streq(tok.val, "char") or
-        streq(tok.val, "struct") or streq(tok.val, "union") or
-        streq(tok.val, "short") or streq(tok.val, "long");
+    var types = [_][:0]const u8{ "void", "char", "int", "short", "long", "struct", "union" };
+    for (types) |t| {
+        if (streq(tok.val, t)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 fn alignTo(n: usize, a: usize) usize {

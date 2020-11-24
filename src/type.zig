@@ -13,6 +13,7 @@ const errorAt = err.errorAt;
 const errorAtToken = err.errorAtToken;
 
 pub const TypeKind = enum {
+    TyVoid,
     TyChar,
     TyShort,
     TyInt,
@@ -68,6 +69,13 @@ pub const Type = struct {
     pub fn allocInit(kind: TypeKind) *Type {
         var ty = getAllocator().create(Type) catch @panic("cannot allocate Type");
         ty.* = Type.init(kind);
+        return ty;
+    }
+
+    pub fn typeVoid() *Type {
+        var ty = Type.allocInit(.TyVoid);
+        ty.*.size = 1;
+        ty.*.alignment = 1;
         return ty;
     }
 
@@ -186,6 +194,8 @@ pub fn addType(nodeWithNull: ?*Node) void {
         .NdDeref => {
             if (node.*.lhs.?.*.ty.?.*.base == null)
                 errorAtToken(node.*.tok, "Invalid pointer dereference");
+            if (node.*.lhs.?.*.ty.?.*.base.?.*.kind == .TyVoid)
+                errorAtToken(node.*.tok, "void型をdereferenceしようとしています");
             node.*.ty = node.*.lhs.?.*.ty.?.*.base;
             return;
         },

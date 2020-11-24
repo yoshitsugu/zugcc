@@ -271,5 +271,6 @@ assert 3  'int main() { char *x[3]; char y; x[0]=&y; y=3; return x[0][0]; }'
 assert 4  'int main() { char x[3]; char (*y)[3]=x; y[0][0]=4; return y[0][0]; }'
 
 assert 1 'int printf(); int main() { return 1; }'
+assert 1 'int main() { void *x; return 1; }'
 
 echo OK
