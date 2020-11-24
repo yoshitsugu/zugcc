@@ -131,6 +131,7 @@ pub const Obj = struct {
     ty: ?*Type,
     is_local: bool,
     is_function: bool,
+    is_definition: bool,
 
     // ローカル変数のとき
     offset: i32, // RBPからのオフセット
@@ -139,9 +140,9 @@ pub const Obj = struct {
     init_data: [:0]u8,
 
     // 関数のとき
-    params: ArrayList(*Obj),
+    params: ?ArrayList(*Obj),
     body: *Node, // 関数の開始ノード
-    locals: ArrayList(*Obj),
+    locals: ?ArrayList(*Obj),
     stack_size: i32,
 
     pub fn initVar(is_local: bool, name: [:0]u8, ty: *Type) Obj {
@@ -150,11 +151,12 @@ pub const Obj = struct {
             .ty = ty,
             .is_local = is_local,
             .is_function = false,
+            .is_definition = false,
             .offset = 0,
             .init_data = "",
-            .params = undefined,
+            .params = null,
             .body = undefined,
-            .locals = undefined,
+            .locals = null,
             .stack_size = 0,
         };
     }
@@ -378,7 +380,7 @@ pub fn parse(tokens: []Token, ti: *usize) !ArrayList(*Obj) {
     while (ti.* < tokens.len) {
         const basety = declspec(tokens, ti);
         if (isFunction(tokens, ti)) {
-            _ = function(tokens, ti, basety);
+            function(tokens, ti, basety);
         } else {
             globalVariable(tokens, ti, basety);
         }
@@ -398,9 +400,16 @@ fn isFunction(tokens: []Token, ti: *usize) bool {
 }
 
 // function = declarator ident { compound_stmt }
-fn function(tokens: []Token, ti: *usize, basety: *Type) *Obj {
+fn function(tokens: []Token, ti: *usize, basety: *Type) void {
     locals = ArrayList(*Obj).init(getAllocator());
     const ty = declarator(tokens, ti, basety);
+    const is_definition = !consumeTokVal(tokens, ti, ";");
+    var f = newGvar(ty.*.name.?.*.val, ty);
+    f.*.is_function = true;
+    f.*.is_definition = is_definition;
+    if (!f.*.is_definition) {
+        return;
+    }
 
     enterScope();
 
@@ -409,17 +418,12 @@ fn function(tokens: []Token, ti: *usize, basety: *Type) *Obj {
     for (locals.items) |lc| {
         params.append(lc) catch @panic("cannot append params");
     }
-
-    skip(tokens, ti, "{");
-    var f = newGvar(ty.*.name.?.*.val, ty);
-    f.*.is_function = true;
     f.*.params = params;
+    skip(tokens, ti, "{");
     f.*.body = compoundStmt(tokens, ti);
     f.*.locals = locals;
 
     leaveScope();
-
-    return f;
 }
 
 fn globalVariable(tokens: []Token, ti: *usize, basety: *Type) void {

@@ -53,7 +53,7 @@ fn emitData(prog: ArrayList(*Obj)) !void {
 
 fn emitText(prog: ArrayList(*Obj)) !void {
     for (prog.items) |func| {
-        if (!func.*.is_function)
+        if (!func.*.is_function or !func.*.is_definition)
             continue;
         try println("  .globl {}", .{func.*.name});
         try println("  .text", .{});
@@ -66,12 +66,14 @@ fn emitText(prog: ArrayList(*Obj)) !void {
         try println("  mov %rsp, %rbp", .{});
         try println("  sub ${}, %rsp", .{func.*.stack_size});
 
-        const fparams = func.params.items;
-        var i: usize = fparams.len;
-        while (i > 0) {
-            const fparam = fparams[i - 1];
-            try storeGp(fparam.*.offset, fparam.*.ty.?.*.size, fparams.len - i);
-            i -= 1;
+        if (func.params != null) {
+            const fparams = func.params.?.items;
+            var i: usize = fparams.len;
+            while (i > 0) {
+                const fparam = fparams[i - 1];
+                try storeGp(fparam.*.offset, fparam.*.ty.?.*.size, fparams.len - i);
+                i -= 1;
+            }
         }
 
         try genStmt(func.*.body);
@@ -282,17 +284,19 @@ fn assignLvarOffsets(prog: ArrayList(*Obj)) void {
             continue;
         var offset: i32 = 0;
 
-        const ls = func.*.locals.items;
-        if (ls.len > 0) {
-            var li: usize = ls.len - 1;
-            while (true) {
-                offset += @intCast(i32, ls[li].ty.?.*.size);
-                offset = alignTo(offset, @intCast(i32, ls[li].ty.?.*.alignment));
-                ls[li].offset = -offset;
-                if (li > 0) {
-                    li -= 1;
-                } else {
-                    break;
+        if (func.*.locals != null) {
+            const ls = func.*.locals.?.items;
+            if (ls.len > 0) {
+                var li: usize = ls.len - 1;
+                while (true) {
+                    offset += @intCast(i32, ls[li].ty.?.*.size);
+                    offset = alignTo(offset, @intCast(i32, ls[li].ty.?.*.alignment));
+                    ls[li].offset = -offset;
+                    if (li > 0) {
+                        li -= 1;
+                    } else {
+                        break;
+                    }
                 }
             }
         }
