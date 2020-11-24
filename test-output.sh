@@ -273,4 +273,11 @@ assert 4  'int main() { char x[3]; char (*y)[3]=x; y[0][0]=4; return y[0][0]; }'
 assert 1 'int printf(); int main() { return 1; }'
 assert 1 'int main() { void *x; return 1; }'
 
+assert 1 'int main() { char x; return sizeof(x); }'
+assert 2 'int main() { short int x; return sizeof(x); }'
+assert 2 'int main() { int short x; return sizeof(x); }'
+assert 4 'int main() { int x; return sizeof(x); }'
+assert 8 'int main() { long int x; return sizeof(x); }'
+assert 8 'int main() { int long x; return sizeof(x); }'
+
 echo OK

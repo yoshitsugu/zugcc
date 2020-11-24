@@ -607,30 +607,76 @@ fn declarator(tokens: []Token, ti: *usize, typ: *Type) *Type {
     return ty;
 }
 
-// declspec = "void" | "char" | "short" | "int" | "long" | struct-decl
+// declspec = ("void" | "char" | "short" | "int" | "long"
+//             | struct-decl | union-decl)+
+//
+// The order of typenames in a type-specifier doesn't matter. For
+// example, `int long static` means the same as `static long int`.
+// That can also be written as `static long` because you can omit
+// `int` if `long` or `short` are specified. However, something like
+// `char int` is not a valid type specifier. We have to accept only a
+// limited combinations of the typenames.
+//
+// In this function, we count the number of occurrences of each typename
+// while keeping the "current" type object that the typenames up
+// until that point represent. When we reach a non-typename token,
+// we returns the current type object.
 fn declspec(tokens: []Token, ti: *usize) *Type {
-    if (consumeTokVal(tokens, ti, "void"))
-        return Type.typeVoid();
+    // We use a single integer as counters for all typenames.
+    // For example, bits 0 and 1 represents how many times we saw the
+    // keyword "void" so far. With this, we can use a switch statement
+    // as you can see below.
+    const TypeMax = enum(usize) {
+        Void = 1 << 0,
+        Char = 1 << 2,
+        Short = 1 << 4,
+        Int = 1 << 6,
+        Long = 1 << 8,
+        Other = 1 << 10,
+    };
 
-    if (consumeTokVal(tokens, ti, "char"))
-        return Type.typeChar();
+    var ty = Type.typeInt();
+    var counter: usize = 0;
 
-    if (consumeTokVal(tokens, ti, "short"))
-        return Type.typeShort();
+    while (isTypeName(tokens, ti)) {
+        var structOrUnion = false;
+        if (consumeTokVal(tokens, ti, "struct")) {
+            ty = structDecl(tokens, ti);
+            structOrUnion = true;
+        } else if (consumeTokVal(tokens, ti, "union")) {
+            ty = unionDecl(tokens, ti);
+            structOrUnion = true;
+        }
+        if (structOrUnion) {
+            counter += @enumToInt(TypeMax.Other);
+            continue;
+        }
 
-    if (consumeTokVal(tokens, ti, "int"))
-        return Type.typeInt();
+        if (consumeTokVal(tokens, ti, "void")) {
+            counter += @enumToInt(TypeMax.Void);
+        } else if (consumeTokVal(tokens, ti, "char")) {
+            counter += @enumToInt(TypeMax.Char);
+        } else if (consumeTokVal(tokens, ti, "short")) {
+            counter += @enumToInt(TypeMax.Short);
+        } else if (consumeTokVal(tokens, ti, "int")) {
+            counter += @enumToInt(TypeMax.Int);
+        } else if (consumeTokVal(tokens, ti, "long")) {
+            counter += @enumToInt(TypeMax.Long);
+        } else {
+            unreachable;
+        }
 
-    if (consumeTokVal(tokens, ti, "long"))
-        return Type.typeLong();
-
-    if (consumeTokVal(tokens, ti, "struct"))
-        return structDecl(tokens, ti);
-
-    if (consumeTokVal(tokens, ti, "union")) {
-        return unionDecl(tokens, ti);
+        switch (counter) {
+            @enumToInt(TypeMax.Void) => ty = Type.typeVoid(),
+            @enumToInt(TypeMax.Char) => ty = Type.typeChar(),
+            @enumToInt(TypeMax.Short), @enumToInt(TypeMax.Short) + @enumToInt(TypeMax.Int) => ty = Type.typeShort(),
+            @enumToInt(TypeMax.Int) => ty = Type.typeInt(),
+            @enumToInt(TypeMax.Long), @enumToInt(TypeMax.Long) + @enumToInt(TypeMax.Int) => ty = Type.typeLong(),
+            else => errorAtToken(getOrLast(tokens, ti), "不正な型名です"),
+        }
     }
-    errorAtToken(getOrLast(tokens, ti), "typename expected");
+
+    return ty;
 }
 
 // struct-union-decl = ident? ("{" struct-members)?
