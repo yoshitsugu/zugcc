@@ -541,11 +541,14 @@ fn declaration(tokens: []Token, ti: *usize) *Node {
 
     var head = Node.init(.NdNum, token);
     var cur = &head;
-    var i: usize = ti.*;
+    var first: bool = true;
 
     while (ti.* < tokens.len and !consumeTokVal(tokens, ti, ";")) {
-        if (i != ti.*)
+        if (!first) {
             skip(tokens, ti, ",");
+        } else {
+            first = false;
+        }
 
         var ty = declarator(tokens, ti, baseTy);
         var variable = newLvar(ty.*.name.?.*.val, ty);
@@ -568,12 +571,25 @@ fn declaration(tokens: []Token, ti: *usize) *Node {
     return node;
 }
 
-// declarator = "*"* ident type-suffix
+// declarator = "*"* ("(" ident ")" | "(" declarator ")" | ident) type-suffix
 fn declarator(tokens: []Token, ti: *usize, typ: *Type) *Type {
     var ty = typ;
-    while (consumeTokVal(tokens, ti, "*"))
+    while (consumeTokVal(tokens, ti, "*")) {
         ty = Type.pointerTo(ty);
+    }
 
+    if (consumeTokVal(tokens, ti, "(")) {
+        const start = ti.*;
+        while (!consumeTokVal(tokens, ti, ")")) {
+            ti.* += 1;
+        }
+        ty = typeSuffix(tokens, ti, ty);
+        const end = ti.*;
+        ti.* = start;
+        ty = declarator(tokens, ti, ty);
+        ti.* = end;
+        return ty;
+    }
     var tok = &tokens[ti.*];
     if (tok.*.kind != .TkIdent)
         errorAtToken(tok, "expected a variable name");
