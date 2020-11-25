@@ -671,7 +671,11 @@ fn declspec(tokens: []Token, ti: *usize) *Type {
             @enumToInt(TypeMax.Char) => ty = Type.typeChar(),
             @enumToInt(TypeMax.Short), @enumToInt(TypeMax.Short) + @enumToInt(TypeMax.Int) => ty = Type.typeShort(),
             @enumToInt(TypeMax.Int) => ty = Type.typeInt(),
-            @enumToInt(TypeMax.Long), @enumToInt(TypeMax.Long) + @enumToInt(TypeMax.Int) => ty = Type.typeLong(),
+            @enumToInt(TypeMax.Long),
+            @enumToInt(TypeMax.Long) + @enumToInt(TypeMax.Int),
+            @enumToInt(TypeMax.Long) + @enumToInt(TypeMax.Long),
+            @enumToInt(TypeMax.Long) + @enumToInt(TypeMax.Long) + @enumToInt(TypeMax.Int),
+            => ty = Type.typeLong(),
             else => errorAtToken(getOrLast(tokens, ti), "不正な型名です"),
         }
     }
