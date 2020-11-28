@@ -1043,11 +1043,13 @@ fn getStructMember(tokens: []Token, ti: *usize, ty: *Type) *Member {
 
 // primary = "(" "{" stmt+ "}" ")"
 //         | "(" expr ")"
+//         | "sizeof" "(" type-name ")"
 //         | "sizeof" unary
 //         | ident func-args?
 //         | str
 //         | num
 fn primary(tokens: []Token, ti: *usize) *Node {
+    const start = ti.*;
     var token = tokens[ti.*];
     if (streq(token.val, "(") and ti.* + 1 < tokens.len and streq(tokens[ti.* + 1].val, "{")) {
         // This is a GNU statement expression
@@ -1062,6 +1064,19 @@ fn primary(tokens: []Token, ti: *usize) *Node {
         const node = expr(tokens, ti);
         skip(tokens, ti, ")");
         return node;
+    }
+
+    var t2: usize = ti.*;
+    var ti2 = &t2;
+    if (consumeTokVal(tokens, ti2, "sizeof") and
+        consumeTokVal(tokens, ti2, "(") and
+        isTypeName(tokens, ti2))
+    {
+        var ty = typename(tokens, ti2);
+        skip(tokens, ti2, ")");
+        ti.* = ti2.*;
+        const sizeStr = allocPrint0(getAllocator(), "{}", .{ty.*.size}) catch @panic("cannot allocate string for size");
+        return newNum(sizeStr, &tokens[start]);
     }
 
     if (consumeTokVal(tokens, ti, "sizeof")) {
@@ -1098,6 +1113,30 @@ fn primary(tokens: []Token, ti: *usize) *Node {
     }
 
     errorAtToken(&token, "expected an expression");
+}
+
+fn typename(tokens: []Token, ti: *usize) *Type {
+    var ty = declspec(tokens, ti, null);
+    return abstractDeclarator(tokens, ti, ty);
+}
+
+// abstract-declarator = "*"* ("(" abstract-declarator ")")? type-suffix
+fn abstractDeclarator(tokens: []Token, ti: *usize, basety: *Type) *Type {
+    var ty = basety;
+    while (consumeTokVal(tokens, ti, "*")) {
+        ty = Type.pointerTo(ty);
+    }
+
+    if (consumeTokVal(tokens, ti, "(")) {
+        var start = ti.*;
+        var ignore = Type.typeInt();
+        _ = abstractDeclarator(tokens, ti, ignore);
+        skip(tokens, ti, ")");
+        ty = typeSuffix(tokens, ti, ty);
+        return abstractDeclarator(tokens, &start, ty);
+    }
+
+    return typeSuffix(tokens, ti, ty);
 }
 
 // funcall = ident "(" (assign ("," assign)*)? ")"
