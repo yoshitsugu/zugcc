@@ -214,16 +214,27 @@ fn genExpr(nodeWithNull: ?*Node) anyerror!void {
     try genExpr(node.*.lhs);
     try pop("%rdi");
 
+    var ax = "%eax";
+    var di = "%edi";
+    if (node.*.lhs.?.*.ty.?.*.kind == .TyLong or node.*.lhs.?.*.ty.?.*.base != null) {
+        ax = "%rax";
+        di = "%rdi";
+    }
+
     switch (node.*.kind) {
-        NodeKind.NdAdd => try println("  add %rdi, %rax", .{}),
-        NodeKind.NdSub => try println("  sub %rdi, %rax", .{}),
-        NodeKind.NdMul => try println("  imul %rdi, %rax", .{}),
+        NodeKind.NdAdd => try println("  add {}, {}", .{ di, ax }),
+        NodeKind.NdSub => try println("  sub {}, {}", .{ di, ax }),
+        NodeKind.NdMul => try println("  imul {}, {}", .{ di, ax }),
         NodeKind.NdDiv => {
-            try println("  cqo", .{});
-            try println("  idiv %rdi", .{});
+            if (node.*.lhs.?.*.ty.?.*.size == 8) {
+                try println("  cqo", .{});
+            } else {
+                try println("  cdq", .{});
+            }
+            try println("  idiv {}", .{di});
         },
         NodeKind.NdEq, NodeKind.NdNe, NodeKind.NdLt, NodeKind.NdLe => {
-            try println("  cmp %rdi, %rax", .{});
+            try println("  cmp {}, {}", .{ di, ax });
 
             if (node.*.kind == NodeKind.NdEq) {
                 try println("  sete %al", .{});
