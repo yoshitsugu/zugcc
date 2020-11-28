@@ -188,23 +188,40 @@ pub const Obj = struct {
     }
 };
 
-// ローカル変数、グローバル変数のスコープ
+// ローカル変数、グローバル変数, typedefのスコープ
 const VarScope = struct {
     next: ?*VarScope,
     name: [:0]u8,
-    variable: *Obj,
+    variable: ?*Obj,
+    type_def: ?*Type,
 
-    pub fn init(name: [:0]u8, v: *Obj) VarScope {
+    pub fn init(name: [:0]u8) VarScope {
         return VarScope{
             .next = null,
             .name = name,
-            .variable = v,
+            .variable = null,
+            .type_def = null,
         };
     }
 
-    pub fn allocInit(name: [:0]u8, v: *Obj) *VarScope {
+    pub fn allocInit(name: [:0]u8) *VarScope {
         var vs = getAllocator().create(VarScope) catch @panic("cannot allocate VarScope");
-        vs.* = VarScope.init(name, v);
+        vs.* = VarScope.init(name);
+        return vs;
+    }
+};
+
+// typedef や externで使う変数の属性
+const VarAttr = struct {
+    is_typedef: bool,
+
+    pub fn init() VarAttr {
+        return VarAttr{ .is_typedef = false };
+    }
+
+    pub fn allocInit() *VarAttr {
+        var vs = getAllocator().create(VarAttr) catch @panic("cannot allocate VarAttr");
+        vs.* = VarAttr.init();
         return vs;
     }
 };
@@ -243,8 +260,8 @@ const Scope = struct {
     }
 };
 
-fn pushVarToScope(v: *Obj) *VarScope {
-    var vs = VarScope.allocInit(v.*.name, v);
+fn pushScope(name: [:0]u8) *VarScope {
+    var vs = VarScope.allocInit(name);
     vs.*.next = current_scope.*.vars;
     current_scope.*.vars = vs;
     return vs;
@@ -317,14 +334,16 @@ var current_scope: *Scope = undefined;
 
 fn newLvar(name: [:0]u8, ty: *Type) *Obj {
     var v = Obj.allocVar(true, name, ty);
-    _ = pushVarToScope(v);
+    var sc = pushScope(name);
+    sc.*.variable = v;
     locals.append(v) catch @panic("ローカル変数のパースに失敗しました");
     return v;
 }
 
 fn newGvar(name: [:0]u8, ty: *Type) *Obj {
     var v = Obj.allocVar(false, name, ty);
-    _ = pushVarToScope(v);
+    var sc = pushScope(name);
+    sc.*.variable = v;
     globals.append(v) catch @panic("グローバル変数のパースに失敗しました");
     return v;
 }
@@ -339,15 +358,14 @@ fn leaveScope() void {
     current_scope = current_scope.*.next.?;
 }
 
-fn findVar(token: Token) ?*Obj {
-    for (locals.items) |lv| {
-        if (streq(lv.*.name, token.val)) {
-            return lv;
-        }
-    }
-    for (globals.items) |gv| {
-        if (streq(gv.*.name, token.val)) {
-            return gv;
+fn findVar(token: Token) ?*VarScope {
+    var sc: ?*Scope = current_scope;
+    while (sc != null) : (sc = sc.?.*.next) {
+        var sv = sc.?.*.vars;
+        while (sv != null) : (sv = sv.?.*.next) {
+            if (streq(token.val, sv.?.*.name)) {
+                return sv;
+            }
         }
     }
     return null;
@@ -372,13 +390,46 @@ fn getOrLast(tokens: []Token, ti: *usize) *Token {
     return &tokens[tokens.len - 1];
 }
 
-// program = (function-definition | global-variable)*
+fn findTypedef(tokens: []Token, ti: *usize) ?*Type {
+    if (ti.* >= tokens.len) {
+        errorAtToken(getOrLast(tokens, ti), "Unexpected EOF");
+    }
+    const token = tokens[ti.*];
+    if (token.kind == TokenKind.TkIdent) {
+        var sc = findVar(token);
+        if (sc != null)
+            return sc.?.*.type_def;
+    }
+    return null;
+}
+
+fn parseTypedef(tokens: []Token, ti: *usize, basety: *Type) void {
+    var first = true;
+    while (!consumeTokVal(tokens, ti, ";")) {
+        if (!first)
+            skip(tokens, ti, ",");
+        first = false;
+
+        var ty = declarator(tokens, ti, basety);
+        pushScope(ty.*.name.?.*.val).*.type_def = ty;
+    }
+}
+
+// program = (typedef | function-definition | global-variable)*
 pub fn parse(tokens: []Token, ti: *usize) !ArrayList(*Obj) {
     Type.initGlobals();
     globals = ArrayList(*Obj).init(getAllocator());
     current_scope = Scope.allocInit();
     while (ti.* < tokens.len) {
-        const basety = declspec(tokens, ti);
+        var attr = VarAttr.init();
+        const basety = declspec(tokens, ti, &attr);
+
+        // Typedef
+        if (attr.is_typedef) {
+            parseTypedef(tokens, ti, basety);
+            continue;
+        }
+
         if (isFunction(tokens, ti)) {
             function(tokens, ti, basety);
         } else {
@@ -509,7 +560,14 @@ fn compoundStmt(tokens: []Token, ti: *usize) *Node {
             break;
         }
         if (isTypeName(tokens, ti)) {
-            cur.*.next = declaration(tokens, ti);
+            var attr = VarAttr.init();
+            var basety = declspec(tokens, ti, &attr);
+
+            if (attr.is_typedef) {
+                parseTypedef(tokens, ti, basety);
+                continue;
+            }
+            cur.*.next = declaration(tokens, ti, basety);
         } else {
             cur.*.next = stmt(tokens, ti);
         }
@@ -536,12 +594,11 @@ fn exprStmt(tokens: []Token, ti: *usize) *Node {
 }
 
 // declaration = declspec (declarator ("=" expr)? ("," declarator ("=" expr)?)*)? ";"
-fn declaration(tokens: []Token, ti: *usize) *Node {
+fn declaration(tokens: []Token, ti: *usize, basety: *Type) *Node {
     if (tokens.len <= ti.*) {
         errorAtToken(&tokens[tokens.len - 1], "Unexpected EOF");
     }
     var token = &tokens[ti.*];
-    const baseTy = declspec(tokens, ti);
 
     var head = Node.init(.NdNum, token);
     var cur = &head;
@@ -554,7 +611,7 @@ fn declaration(tokens: []Token, ti: *usize) *Node {
             first = false;
         }
 
-        var ty = declarator(tokens, ti, baseTy);
+        var ty = declarator(tokens, ti, basety);
         if (ty.*.kind == TypeKind.TyVoid) {
             errorAtToken(&tokens[ti.*], "変数がvoidとして宣言されています");
         }
@@ -598,8 +655,9 @@ fn declarator(tokens: []Token, ti: *usize, typ: *Type) *Type {
         return ty;
     }
     var tok = &tokens[ti.*];
-    if (tok.*.kind != .TkIdent)
+    if (tok.*.kind != .TkIdent) {
         errorAtToken(tok, "expected a variable name");
+    }
 
     ti.* += 1;
     ty = typeSuffix(tokens, ti, ty);
@@ -608,7 +666,8 @@ fn declarator(tokens: []Token, ti: *usize, typ: *Type) *Type {
 }
 
 // declspec = ("void" | "char" | "short" | "int" | "long"
-//             | struct-decl | union-decl)+
+//             | "typedef"
+//             | struct-decl | union-decl | typedef-name)+
 //
 // The order of typenames in a type-specifier doesn't matter. For
 // example, `int long static` means the same as `static long int`.
@@ -621,7 +680,7 @@ fn declarator(tokens: []Token, ti: *usize, typ: *Type) *Type {
 // while keeping the "current" type object that the typenames up
 // until that point represent. When we reach a non-typename token,
 // we returns the current type object.
-fn declspec(tokens: []Token, ti: *usize) *Type {
+fn declspec(tokens: []Token, ti: *usize, attr: ?*VarAttr) *Type {
     // We use a single integer as counters for all typenames.
     // For example, bits 0 and 1 represents how many times we saw the
     // keyword "void" so far. With this, we can use a switch statement
@@ -639,15 +698,31 @@ fn declspec(tokens: []Token, ti: *usize) *Type {
     var counter: usize = 0;
 
     while (isTypeName(tokens, ti)) {
-        var structOrUnion = false;
-        if (consumeTokVal(tokens, ti, "struct")) {
-            ty = structDecl(tokens, ti);
-            structOrUnion = true;
-        } else if (consumeTokVal(tokens, ti, "union")) {
-            ty = unionDecl(tokens, ti);
-            structOrUnion = true;
+        if (consumeTokVal(tokens, ti, "typedef")) {
+            if (attr == null)
+                errorAtToken(getOrLast(tokens, ti), "不正なストレージクラス指定子です");
+            attr.?.*.is_typedef = true;
+            continue;
         }
-        if (structOrUnion) {
+
+        var ty2 = findTypedef(tokens, ti);
+        var typeMaxOther = false;
+        var token = getOrLast(tokens, ti);
+        if (streq(token.val, "struct") or
+            streq(token.val, "union") or
+            ty2 != null)
+        {
+            if (counter > 0) {
+                break;
+            }
+            if (consumeTokVal(tokens, ti, "struct")) {
+                ty = structDecl(tokens, ti);
+            } else if (consumeTokVal(tokens, ti, "union")) {
+                ty = unionDecl(tokens, ti);
+            } else {
+                ty = ty2.?;
+                ti.* += 1;
+            }
             counter += @enumToInt(TypeMax.Other);
             continue;
         }
@@ -755,7 +830,7 @@ fn structMembers(tokens: []Token, ti: *usize, ty: *Type) void {
     var cur: *Member = &head;
 
     while (!consumeTokVal(tokens, ti, "}")) {
-        var basety = declspec(tokens, ti);
+        var basety = declspec(tokens, ti, null);
         var first: bool = true;
 
         while (!consumeTokVal(tokens, ti, ";")) {
@@ -798,7 +873,7 @@ fn funcParams(tokens: []Token, ti: *usize, ty: *Type) *Type {
     while (!consumeTokVal(tokens, ti, ")")) {
         if (cur != &head)
             skip(tokens, ti, ",");
-        var basety = declspec(tokens, ti);
+        var basety = declspec(tokens, ti, null);
         cur.*.next = declarator(tokens, ti, basety);
         cur = cur.*.next.?;
     }
@@ -1003,12 +1078,12 @@ fn primary(tokens: []Token, ti: *usize) *Node {
             return funcall(tokens, ti);
         }
         // 変数
-        var v = findVar(token);
-        if (v == null) {
+        var sc = findVar(token);
+        if (sc == null or sc.?.*.variable == null) {
             errorAtToken(&token, "変数が未定義です");
         }
         ti.* += 1;
-        return newVarNode(v.?, getOrLast(tokens, ti));
+        return newVarNode(sc.?.*.variable.?, getOrLast(tokens, ti));
     }
 
     if (token.kind == TokenKind.TkStr) {
@@ -1155,13 +1230,13 @@ fn isTypeName(tokens: []Token, ti: *usize) bool {
         errorAt(ti.*, null, "Unexpected EOF");
     }
     const tok = tokens[ti.*];
-    var types = [_][:0]const u8{ "void", "char", "int", "short", "long", "struct", "union" };
+    var types = [_][:0]const u8{ "void", "char", "int", "short", "long", "struct", "union", "typedef" };
     for (types) |t| {
         if (streq(tok.val, t)) {
             return true;
         }
     }
-    return false;
+    return findTypedef(tokens, ti) != null;
 }
 
 fn alignTo(n: usize, a: usize) usize {
