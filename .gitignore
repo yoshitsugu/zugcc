@@ -2,6 +2,8 @@
 **/\#*
 **/*.o
 **/*.s
+**/*.exe
 **/a.out
 /zig-cache
 /tmp
+/zugcc

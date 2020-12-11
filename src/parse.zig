@@ -17,6 +17,7 @@ const getAllocator = allocator.getAllocator;
 const typezig = @import("type.zig");
 const TypeKind = typezig.TypeKind;
 const Type = typezig.Type;
+const copyType = typezig.copyType;
 const addType = typezig.addType;
 const alignToI32 = @import("codegen.zig").alignTo;
 
@@ -44,6 +45,7 @@ pub const NodeKind = enum {
     NdStmtExpr, // statement expression
     NdVar, // 変数
     NdNum, // 数値
+    NdCast, // Type Cast
 };
 
 pub const Node = struct {
@@ -290,6 +292,15 @@ pub fn newUnary(kind: NodeKind, lhs: *Node, tok: *Token) *Node {
 fn newNum(val: [:0]u8, tok: *Token) *Node {
     var node = Node.allocInit(.NdNum, tok);
     node.*.val = val;
+    return node;
+}
+
+fn newCast(e: *Node, ty: *Type) *Node {
+    addType(e);
+
+    var node = Node.allocInit(.NdCast, e.*.tok);
+    node.*.lhs = e;
+    node.*.ty = copyType(ty);
     return node;
 }
 
@@ -956,18 +967,18 @@ pub fn add(tokens: []Token, ti: *usize) *Node {
     return node;
 }
 
-// mul = unary ("*" unary | "/" unary)*
+// mul = cast ("*" cast | "/" cast)*
 pub fn mul(tokens: []Token, ti: *usize) *Node {
-    var node = unary(tokens, ti);
+    var node = cast(tokens, ti);
 
     while (ti.* < tokens.len) {
         const token = tokens[ti.*];
         if (streq(token.val, "*")) {
             ti.* += 1;
-            node = newBinary(.NdMul, node, unary(tokens, ti), getOrLast(tokens, ti));
+            node = newBinary(.NdMul, node, cast(tokens, ti), getOrLast(tokens, ti));
         } else if (streq(token.val, "/")) {
             ti.* += 1;
-            node = newBinary(.NdDiv, node, unary(tokens, ti), getOrLast(tokens, ti));
+            node = newBinary(.NdDiv, node, cast(tokens, ti), getOrLast(tokens, ti));
         } else {
             break;
         }
@@ -975,21 +986,39 @@ pub fn mul(tokens: []Token, ti: *usize) *Node {
     return node;
 }
 
-// unary = ("+" | "-" | "*" | "&") unary
+// cast = "(" type-name ")" cast | unary
+fn cast(tokens: []Token, ti: *usize) *Node {
+    if (consumeTokVal(tokens, ti, "(")) {
+        if (isTypeName(tokens, ti)) {
+            var start = ti.* - 1;
+            var ty = typename(tokens, ti);
+            skip(tokens, ti, ")");
+            var node = newCast(cast(tokens, ti), ty);
+            node.*.tok = &tokens[start];
+            return node;
+        } else {
+            ti.* -= 1;
+        }
+    }
+
+    return unary(tokens, ti);
+}
+
+// unary = ("+" | "-" | "*" | "&") cast
 //       | postfix
-pub fn unary(tokens: []Token, ti: *usize) *Node {
+fn unary(tokens: []Token, ti: *usize) *Node {
     const token = tokens[ti.*];
     if (consumeTokVal(tokens, ti, "+")) {
-        return unary(tokens, ti);
+        return cast(tokens, ti);
     }
     if (consumeTokVal(tokens, ti, "-")) {
-        return newUnary(.NdNeg, unary(tokens, ti), getOrLast(tokens, ti));
+        return newUnary(.NdNeg, cast(tokens, ti), getOrLast(tokens, ti));
     }
     if (consumeTokVal(tokens, ti, "&")) {
-        return newUnary(.NdAddr, unary(tokens, ti), getOrLast(tokens, ti));
+        return newUnary(.NdAddr, cast(tokens, ti), getOrLast(tokens, ti));
     }
     if (consumeTokVal(tokens, ti, "*")) {
-        return newUnary(.NdDeref, unary(tokens, ti), getOrLast(tokens, ti));
+        return newUnary(.NdDeref, cast(tokens, ti), getOrLast(tokens, ti));
     }
     return postfix(tokens, ti);
 }

@@ -45,6 +45,7 @@ fn emitData(prog: ArrayList(*Obj)) !void {
             for (v.*.init_data) |c| {
                 try println("  .byte {}", .{c});
             }
+            try println("  .byte 0", .{});
         } else {
             try println("  .zero {}", .{v.*.ty.?.*.size});
         }
@@ -187,6 +188,11 @@ fn genExpr(nodeWithNull: ?*Node) anyerror!void {
         NodeKind.NdComma => {
             try genExpr(node.*.lhs);
             try genExpr(node.*.rhs);
+            return;
+        },
+        NodeKind.NdCast => {
+            try genExpr(node.*.lhs);
+            try cast(node.*.lhs.?.*.ty.?, node.*.ty.?);
             return;
         },
         NodeKind.NdFuncall => {
@@ -378,3 +384,37 @@ fn storeGp(offset: i32, size: usize, reg: usize) !void {
         else => unreachable,
     }
 }
+
+fn cast(from: *Type, to: *Type) !void {
+    if (to.*.kind == .TyVoid)
+        return;
+
+    var t1 = getTypeId(from);
+    var t2 = getTypeId(to);
+    if (castTable[t1][t2] != null)
+        try println("  {}", .{castTable[t1][t2]});
+}
+
+const TypeId = enum(usize) {
+    I8, I16, I32, I64
+};
+
+fn getTypeId(ty: *Type) usize {
+    return switch (ty.*.kind) {
+        TypeKind.TyChar => @enumToInt(TypeId.I8),
+        TypeKind.TyShort => @enumToInt(TypeId.I16),
+        TypeKind.TyInt => @enumToInt(TypeId.I32),
+        else => @enumToInt(TypeId.I64),
+    };
+}
+
+const i32i8: [:0]const u8 = "movsbl %al, %eax";
+const i32i16: [:0]const u8 = "movswl %ax, %eax";
+const i32i64: [:0]const u8 = "movsxd %eax, %eax";
+
+const castTable = [4][4]?[:0]const u8{
+    .{ null, null, null, i32i64 }, // i8
+    .{ i32i8, null, null, i32i64 }, // i16
+    .{ i32i8, i32i16, null, i32i64 }, // i32
+    .{ i32i8, i32i16, null, null }, // i64
+};

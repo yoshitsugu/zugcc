@@ -220,3 +220,18 @@ pub fn addType(nodeWithNull: ?*Node) void {
 fn stringToSlice(s: [*:0]const u8) [:0]u8 {
     return allocPrint0(getAllocator(), "{}", .{s}) catch @panic("cannot allocate string");
 }
+
+pub fn copyType(ty: *Type) *Type {
+    var newType = Type.allocInit(ty.*.kind);
+    newType.*.size = ty.*.size;
+    newType.*.alignment = ty.*.alignment;
+    newType.*.base = ty.*.base;
+    newType.*.name = ty.*.name;
+    newType.*.array_len = ty.*.array_len;
+    newType.*.members = ty.*.members;
+    newType.*.return_ty = ty.*.return_ty;
+    newType.*.params = ty.*.params;
+    newType.*.next = ty.*.next;
+
+    return newType;
+}
