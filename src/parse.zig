@@ -349,6 +349,8 @@ var locals: ArrayList(*Obj) = undefined;
 var globals: ArrayList(*Obj) = undefined;
 // 現在のスコープを保持するためのグローバル変数
 var current_scope: *Scope = undefined;
+// 現在のfunctionを保持するためのグローバル変数
+var current_fn: *Obj = undefined;
 
 fn newLvar(name: [:0]u8, ty: *Type) *Obj {
     var v = Obj.allocVar(true, name, ty);
@@ -480,6 +482,7 @@ fn function(tokens: []Token, ti: *usize, basety: *Type) void {
         return;
     }
 
+    current_fn = f;
     enterScope();
 
     createParamLvars(ty.*.params);
@@ -516,8 +519,12 @@ fn globalVariable(tokens: []Token, ti: *usize, basety: *Type) void {
 //      | expr-stmt
 pub fn stmt(tokens: []Token, ti: *usize) *Node {
     if (consumeTokVal(tokens, ti, "return")) {
-        const node = newUnary(.NdReturn, expr(tokens, ti), getOrLast(tokens, ti));
+        const node = Node.allocInit(.NdReturn, getOrLast(tokens, ti));
+        var exp = expr(tokens, ti);
         skip(tokens, ti, ";");
+
+        addType(exp);
+        node.*.lhs = newCast(exp, current_fn.*.ty.?.*.return_ty.?);
         return node;
     }
     if (consumeTokVal(tokens, ti, "if")) {
