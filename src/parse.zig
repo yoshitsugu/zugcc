@@ -1181,6 +1181,13 @@ fn funcall(tokens: []Token, ti: *usize) *Node {
     ti.* += 2;
 
     const startTi = ti.*;
+
+    var sc = findVar(start.*);
+    if (sc == null)
+        errorAtToken(start, "implicit declaration of a function");
+    if (sc.?.*.variable == null or sc.?.*.variable.?.*.ty.?.*.kind != TypeKind.TyFunc)
+        errorAtToken(start, "not a function");
+    var ty = sc.?.*.variable.?.*.ty.?.*.return_ty;
     var head = Node.init(.NdNum, start);
     var cur = &head;
     while (!consumeTokVal(tokens, ti, ")")) {
@@ -1188,10 +1195,12 @@ fn funcall(tokens: []Token, ti: *usize) *Node {
             skip(tokens, ti, ",");
         cur.*.next = assign(tokens, ti);
         cur = cur.*.next.?;
+        addType(cur);
     }
 
     var node = Node.allocInit(.NdFuncall, start);
     node.*.funcname = start.*.val;
+    node.*.ty = ty;
     node.*.args = head.next;
     return node;
 }
