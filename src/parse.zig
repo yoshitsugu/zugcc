@@ -295,7 +295,14 @@ fn newNum(val: [:0]u8, tok: *Token) *Node {
     return node;
 }
 
-fn newCast(e: *Node, ty: *Type) *Node {
+fn newLong(val: [:0]u8, tok: *Token) *Node {
+    var node = Node.allocInit(.NdNum, tok);
+    node.*.val = val;
+    node.*.ty = Type.typeLong();
+    return node;
+}
+
+pub fn newCast(e: *Node, ty: *Type) *Node {
     addType(e);
 
     var node = Node.allocInit(.NdCast, e.*.tok);
@@ -1202,7 +1209,7 @@ fn skip(tokens: []Token, ti: *usize, s: [:0]const u8) void {
     }
 }
 
-fn getNumber(tokens: []Token, ti: *usize) i32 {
+fn getNumber(tokens: []Token, ti: *usize) i64 {
     if (tokens.len <= ti.*) {
         errorAt(ti.*, null, "数値ではありません");
     }
@@ -1248,7 +1255,7 @@ fn newAdd(lhs: *Node, rhs: *Node, tok: *Token) *Node {
 
     // ptr + num
     const num = allocPrint0(getAllocator(), "{}", .{l.*.ty.?.*.base.?.*.size}) catch @panic("cannot allocate newNum");
-    r = newBinary(.NdMul, r, newNum(num, tok), tok);
+    r = newBinary(.NdMul, r, newLong(num, tok), tok);
     addType(r);
     var n = newBinary(.NdAdd, l, r, tok);
     addType(n);
@@ -1274,7 +1281,7 @@ fn newSub(lhs: *Node, rhs: *Node, tok: *Token) *Node {
     // ptr - num
     if (lhs.*.ty.?.*.base != null and rhs.*.ty.?.*.base == null) {
         const num = allocPrint0(getAllocator(), "{}", .{lhs.*.ty.?.*.base.?.*.size}) catch @panic("cannot allocate newNum");
-        var r = newBinary(.NdMul, rhs, newNum(num, tok), tok);
+        var r = newBinary(.NdMul, rhs, newLong(num, tok), tok);
         addType(r);
         var n = newBinary(.NdSub, lhs, r, tok);
         n.*.ty = lhs.*.ty;

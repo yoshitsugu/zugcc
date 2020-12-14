@@ -208,8 +208,8 @@ fn startsWith(str: [:0]u8, i: usize, target: [:0]const u8) bool {
     return j == target.len;
 }
 
-pub fn atoi(s: [:0]u8) i32 {
-    var n: i32 = 0;
+pub fn atoi(s: [:0]u8) i64 {
+    var n: i64 = 0;
     var neg = false;
     var si: usize = 0;
     if (s.len == 0)
@@ -225,7 +225,7 @@ pub fn atoi(s: [:0]u8) i32 {
         else => {},
     }
     while (si < s.len and isNumber(s[si])) : (si += 1) {
-        n = 10 * n - (@intCast(i32, s[si]) - '0');
+        n = 10 * n - (@intCast(i64, s[si]) - '0');
     }
     if (neg) {
         return n;

@@ -5,7 +5,10 @@ const print = stdout.print;
 const ps = @import("parse.zig");
 const Node = ps.Node;
 const Member = ps.Member;
-const Token = @import("tokenize.zig").Token;
+const newCast = ps.newCast;
+const tk = @import("tokenize.zig");
+const Token = tk.Token;
+const atoi = tk.atoi;
 const allocator = @import("allocator.zig");
 const getAllocator = allocator.getAllocator;
 const err = @import("error.zig");
@@ -161,17 +164,41 @@ pub fn addType(nodeWithNull: ?*Node) void {
     }
 
     switch (node.*.kind) {
-        .NdAdd, .NdSub, .NdMul, .NdDiv, .NdNeg => {
+        .NdNum => {
+            const valueAsI64 = atoi(node.*.val.?);
+            @setRuntimeSafety(false);
+            node.*.ty = if (valueAsI64 == @intCast(i32, valueAsI64)) Type.typeInt() else Type.typeLong();
+            return;
+        },
+        .NdAdd, .NdSub, .NdMul, .NdDiv => {
+            usualArithConv(&(node.*.lhs.?), &(node.*.rhs.?));
             node.*.ty = node.*.lhs.?.*.ty;
+            return;
+        },
+        .NdNeg => {
+            var ty = getCommonType(Type.typeInt(), node.*.lhs.?.*.ty.?);
+            node.*.lhs = newCast(node.*.lhs.?, ty);
+            node.*.ty = ty;
             return;
         },
         .NdAssign => {
             if (node.*.lhs.?.*.ty.?.*.kind == .TyArray)
                 errorAtToken(node.*.lhs.?.*.tok, "not an lvalue");
+            if (node.*.lhs.?.*.ty.?.*.kind != .TyStruct)
+                node.*.rhs = newCast(node.*.rhs.?, node.*.lhs.?.*.ty.?);
             node.*.ty = node.*.lhs.?.*.ty;
             return;
         },
-        .NdEq, .NdNe, .NdLt, .NdLe, .NdVar, .NdNum, .NdFuncall => {
+        .NdEq, .NdNe, .NdLt, .NdLe => {
+            usualArithConv(&(node.*.lhs.?), &(node.*.rhs.?));
+            node.*.ty = Type.typeLong();
+            return;
+        },
+        .NdVar => {
+            node.*.ty = node.*.variable.?.*.ty;
+            return;
+        },
+        .NdFuncall => {
             node.*.ty = Type.typeLong();
             return;
         },
@@ -215,6 +242,20 @@ pub fn addType(nodeWithNull: ?*Node) void {
             return;
         },
     }
+}
+
+pub fn getCommonType(ty1: *Type, ty2: *Type) *Type {
+    if (ty1.*.base != null)
+        return Type.pointerTo(ty1.*.base.?);
+    if (ty1.*.size == 8 or ty2.*.size == 8)
+        return Type.typeLong();
+    return Type.typeInt();
+}
+
+pub fn usualArithConv(lhs: **Node, rhs: **Node) void {
+    var ty = getCommonType(lhs.*.*.ty.?, rhs.*.*.ty.?);
+    lhs.* = newCast(lhs.*, ty);
+    rhs.* = newCast(rhs.*, ty);
 }
 
 fn stringToSlice(s: [*:0]const u8) [:0]u8 {

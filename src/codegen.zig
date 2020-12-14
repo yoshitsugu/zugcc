@@ -337,9 +337,9 @@ fn load(ty: *Type) !void {
     }
 
     if (ty.*.size == 1) {
-        try println("  movsbq (%rax), %rax", .{});
+        try println("  movsbl (%rax), %eax", .{});
     } else if (ty.*.size == 2) {
-        try println("  movswq (%rax), %rax", .{});
+        try println("  movswl (%rax), %eax", .{});
     } else if (ty.*.size == 4) {
         try println("  movsxd (%rax), %rax", .{});
     } else {
@@ -410,7 +410,7 @@ fn getTypeId(ty: *Type) usize {
 
 const i32i8: [:0]const u8 = "movsbl %al, %eax";
 const i32i16: [:0]const u8 = "movswl %ax, %eax";
-const i32i64: [:0]const u8 = "movsxd %eax, %eax";
+const i32i64: [:0]const u8 = "movsxd %eax, %rax";
 
 const castTable = [4][4]?[:0]const u8{
     .{ null, null, null, i32i64 }, // i8
