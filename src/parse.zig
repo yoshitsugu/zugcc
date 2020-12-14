@@ -71,6 +71,7 @@ pub const Node = struct {
 
     // 関数呼出のときに使う
     funcname: ?[:0]u8,
+    func_ty: ?*Type,
     args: ?*Node,
 
     variable: ?*Obj, // 変数、NdVarのときに使う
@@ -92,6 +93,7 @@ pub const Node = struct {
             .inc = null,
             .member = null,
             .funcname = null,
+            .func_ty = null,
             .args = null,
             .variable = null,
             .val = null,
@@ -1194,20 +1196,33 @@ fn funcall(tokens: []Token, ti: *usize) *Node {
         errorAtToken(start, "implicit declaration of a function");
     if (sc.?.*.variable == null or sc.?.*.variable.?.*.ty.?.*.kind != TypeKind.TyFunc)
         errorAtToken(start, "not a function");
-    var ty = sc.?.*.variable.?.*.ty.?.*.return_ty;
+
+    var ty = sc.?.*.variable.?.*.ty;
+    var param_ty = ty.?.*.params;
+
     var head = Node.init(.NdNum, start);
     var cur = &head;
     while (!consumeTokVal(tokens, ti, ")")) {
         if (startTi != ti.*)
             skip(tokens, ti, ",");
-        cur.*.next = assign(tokens, ti);
+
+        var arg = assign(tokens, ti);
+        addType(arg);
+
+        if (param_ty != null) {
+            if (param_ty.?.*.kind == TypeKind.TyStruct or param_ty.?.*.kind == TypeKind.TyUnion)
+                errorAtToken(arg.*.tok, "passing struct or union is not supported yet");
+            arg = newCast(arg, param_ty.?);
+            param_ty = param_ty.?.*.next;
+        }
+        cur.*.next = arg;
         cur = cur.*.next.?;
-        addType(cur);
     }
 
     var node = Node.allocInit(.NdFuncall, start);
     node.*.funcname = start.*.val;
-    node.*.ty = ty;
+    node.*.func_ty = ty;
+    node.*.ty = ty.?.*.return_ty;
     node.*.args = head.next;
     return node;
 }
